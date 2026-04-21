@@ -1,0 +1,32 @@
+name: Relatorio Diario CFO Nosso Cafe
+
+on:
+  schedule:
+    # 11:00 UTC é 08:00 no Horário de Brasília
+    - cron: '0 11 * * *'
+  workflow_dispatch: # Permite rodar manualmente pelo site do GitHub
+
+jobs:
+  executar_integracao:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar codigo do repositorio
+        uses: actions/checkout@v3
+
+      - name: Instalar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Instalar bibliotecas necessarias
+        run: |
+          pip install -r requirements.txt
+
+      - name: Rodar Script de Dados e Report
+        env:
+          # O GitHub vai buscar esses valores nos 'Secrets' que voce criara
+          SAIPOS_TOKEN: ${{ secrets.SAIPOS_TOKEN }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python integracao_saipos.py
