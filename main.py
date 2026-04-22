@@ -122,7 +122,7 @@ def job_completo():
     4. Se bateu a meta, reconheça o esforço da equipe (Bárbara, Laryssa, etc).
     """
 
-    response = client.models.generate_content(model='gemini-2.0-flash', contents=prompt)
+    response = client.models.generate_content(model='gemini-3-flash', contents=prompt)
     relatorio_ia = response.text
 
     # --- 5. ENVIO DO RELATÓRIO ---
