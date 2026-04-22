@@ -103,42 +103,40 @@ def job_completo():
     media_4_semanas = float(cur.fetchone()[0] or 0)
     conn.close()
 
-    # --- 4. ANÁLISE COM GEMINI 2.0 FLASH ---
-    client = genai.Client(api_key=GEMINI_KEY)
-    dia_semana_pt = {0: "Segunda", 1: "Terça", 2: "Quarta", 3: "Quinta", 4: "Sexta", 5: "Sábado", 6: "Domingo"}
-    nome_dia = dia_semana_pt[ontem_dt.weekday()]
-
-    prompt = f"""
-    Aja como CFO analítico do 'Nosso Café'. Marcos é o dono. Analise os resultados de ontem ({ontem_str}, {nome_dia}):
-    - Venda Realizada: R${venda_dia:.2f}
-    - Meta do Dia: R${meta:.2f}
-    - Acumulado do Mês: R${acumulado_mes:.2f}
-    - Média das últimas 4 {nome_dia}s: R${media_4_semanas:.2f}
-
-    Instruções:
-    1. Seja direto e profissional.
-    2. Compare a venda com a meta e com a média histórica das semanas anteriores.
-    3. Se houver queda na média, sugira uma ação prática (ex: promoção, revisão de escala).
-    4. Se bateu a meta, reconheça o esforço da equipe (Bárbara, Laryssa, etc).
-    """
-
-    # --- 4. ANÁLISE COM GEMINI (Com Fallback de Segurança) ---
+    # --- 4. ANÁLISE COM GEMINI (Seleção Automática de Modelo) ---
     try:
-        client = genai.Client(api_key=GEMINI_KEY)
+        client = genai.Client(api_key=GEMINI_KEY.strip())
         
-        # Tentamos o modelo mais recente disponível
-        model_name = 'gemini-1.5-flash' 
+        # 1. Vamos listar os modelos para ver qual o nome exato que sua conta aceita
+        modelos_disponiveis = [m.name for m in client.models.list()]
+        print(f"Modelos encontrados na sua conta: {modelos_disponiveis}")
+
+        # 2. Tentamos selecionar o melhor na ordem de preferência
+        # No Google Cloud/AI Studio em 2026, os nomes perderam o prefixo 'models/' em muitos casos
+        opcoes = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-3-flash']
+        modelo_escolhido = None
         
+        for opcao in opcoes:
+            # Verifica se a opção (ou 'models/'+opcao) está na lista
+            if any(opcao in m for m in modelos_disponiveis):
+                modelo_escolhido = opcao
+                break
+        
+        if not modelo_escolhido:
+            # Se não achou nenhum da lista, pega o primeiro que aparecer
+            modelo_escolhido = modelos_disponiveis[0].split('/')[-1]
+
+        print(f"Usando o modelo: {modelo_escolhido}")
+
         response = client.models.generate_content(
-            model=model_name, 
+            model=modelo_escolhido, 
             contents=prompt
         )
         relatorio_ia = response.text
+
     except Exception as e:
-        print(f"Erro ao chamar IA: {e}. Tentando modelo alternativo...")
-        # Caso o 1.5 também falhe por algum motivo de rede, usamos um texto padrão 
-        # para não quebrar o envio do e-mail.
-        relatorio_ia = f"Erro na análise de IA. Venda: R${venda_dia:.2f}. Meta: R${meta:.2f}."
+        print(f"Erro ao chamar IA: {e}")
+        relatorio_ia = f"Erro na análise de IA: {e}\n\nVenda: R${venda_dia:.2f}\nMeta: R${meta:.2f}"
 
     # --- 5. ENVIO DO RELATÓRIO ---
     assunto = f"Relatório Diário Nosso Café - {ontem_str}"
