@@ -118,7 +118,7 @@ def job_completo():
         # Em 2026, o SDK google-genai prefere o nome limpo ou o sufixo -latest
         # Vamos usar 'gemini-1.5-flash' sem o prefixo 'models/'
         response = client.models.generate_content(
-            model='gemini-1.5-flash', 
+            model='gemini-2.0-flash-lite', 
             contents=texto_prompt
         )
         relatorio_ia = response.text
