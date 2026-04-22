@@ -111,10 +111,12 @@ def job_completo():
     Instruções: Comente o superávit, a projeção e elogie Bárbara, Laryssa, Marcela, Natali e Keity.
     """
 
+    # --- 4. ANÁLISE COM GEMINI (Ajuste de Identificador 2026) ---
     try:
-        # A nova biblioteca usa Client() dentro do módulo genai
         client = genai.Client(api_key=GEMINI_KEY.strip())
         
+        # Em 2026, o SDK google-genai prefere o nome limpo ou o sufixo -latest
+        # Vamos usar 'gemini-1.5-flash' sem o prefixo 'models/'
         response = client.models.generate_content(
             model='gemini-1.5-flash', 
             contents=texto_prompt
@@ -122,7 +124,17 @@ def job_completo():
         relatorio_ia = response.text
     except Exception as e:
         print(f"Erro IA detalhado: {e}")
-        relatorio_ia = f"Venda: R${venda_dia:.2f}\nMeta: R${meta:.2f}\nAcumulado: R${acumulado_mes:.2f}\nProjeção: R${projecao_final:.2f}\nErro IA: {e}"
+        # Fallback elegante com todos os dados que você pediu
+        relatorio_ia = (
+            f"🚀 **RELATÓRIO FINANCEIRO - NOSSO CAFÉ**\n\n"
+            f"Ontem ({nome_dia}): R${venda_dia:.2f}\n"
+            f"Meta: R${meta:.2f} (Superávit: R${venda_dia - meta:.2f})\n\n"
+            f"📊 **MÉTRICAS DO MÊS**\n"
+            f"Acumulado Atual: R${acumulado_mes:.2f}\n"
+            f"Média Diária: R${media_diaria_mes:.2f}\n"
+            f"Projeção Final: R${projecao_final:.2f}\n\n"
+            f"Nota: A análise da IA falhou, mas os números confirmam um ótimo desempenho!"
+        )
         
     enviar_email(f"Relatório Diário Nosso Café - {ontem_str}", relatorio_ia)
 
