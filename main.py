@@ -108,19 +108,30 @@ def job_completo():
     4. Se não bateu, sugira um ajuste rápido.
     """
 
+    # --- 4. ANÁLISE COM GEMINI (Ajuste de Rota Estável) ---
     try:
+        # Forçamos a limpeza da chave
         client = genai.Client(api_key=GEMINI_KEY.strip())
         
-        # Usando o identificador estável para evitar o 404 de 'modelo não encontrado'
-        # Em 2026, o 'gemini-1.5-flash' é o Porto Seguro para automações
+        # Em 2026, usar o ID completo 'models/gemini-1.5-flash' 
+        # ajuda o SDK a encontrar a rota correta fora da v1beta
         response = client.models.generate_content(
-            model='gemini-1.5-flash', 
+            model='models/gemini-1.5-flash', 
             contents=texto_prompt
         )
         relatorio_ia = response.text
+        
     except Exception as e:
         print(f"Erro IA detalhado: {e}")
-        relatorio_ia = f"Análise resumida (IA Offline):\n\nVenda: R${venda_dia:.2f}\nMeta: R${meta:.2f}\nAcumulado: R${acumulado_mes:.2f}\nErro: {e}"
+        # Se falhar, pelo menos entregamos os dados limpos no e-mail
+        relatorio_ia = (
+            f"Análise resumida (IA Offline):\n\n"
+            f"Venda: R${venda_dia:.2f}\n"
+            f"Meta: R${meta:.2f}\n"
+            f"Acumulado: R${acumulado_mes:.2f}\n"
+            f"Média 4 semanas: R${media_4_semanas:.2f}\n\n"
+            f"Log de Erro: {e}"
+        )
 
     # 5. Envio
     assunto = f"Relatório Diário Nosso Café - {ontem_str}"
