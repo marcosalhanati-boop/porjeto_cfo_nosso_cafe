@@ -111,30 +111,62 @@ def job_completo():
     Instruções: Comente o superávit, a projeção e elogie Bárbara, Laryssa, Marcela, Natali e Keity.
     """
 
-    # --- 4. ANÁLISE COM GEMINI (Ajuste de Identificador 2026) ---
+    # --- 4. ANÁLISE COM GEMINI (PROTOCOLO DE AUTO-DESCOBERTA) ---
+    relatorio_ia = ""
     try:
         client = genai.Client(api_key=GEMINI_KEY.strip())
         
-        # Em 2026, o SDK google-genai prefere o nome limpo ou o sufixo -latest
-        # Vamos usar 'gemini-1.5-flash' sem o prefixo 'models/'
-        response = client.models.generate_content(
-            model='gemini-2.0-flash-lite', 
-            contents=texto_prompt
-        )
-        relatorio_ia = response.text
+        # 1. Busca todos os modelos que suportam geração de conteúdo na sua conta
+        modelos_na_conta = [m.name for m in client.models.list() if 'generateContent' in m.supported_methods]
+        print(f"Modelos encontrados: {modelos_na_conta}")
+
+        # 2. Lista de preferência (do mais moderno para o mais estável)
+        preferencia = ['gemini-3-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']
+        
+        # Criamos a fila de tentativa: primeiro os da preferência, depois qualquer outro que sobrar
+        fila_tentativa = []
+        for p in preferencia:
+            for m in modelos_na_conta:
+                if p in m: fila_tentativa.append(m)
+        
+        # Adiciona o restante dos modelos disponíveis que não estavam na preferência
+        for m in modelos_na_conta:
+            if m not in fila_tentativa: fila_tentativa.append(m)
+
+        # 3. Loop de teste: tenta cada modelo até um responder com sucesso
+        for modelo_teste in fila_tentativa:
+            try:
+                print(f"Tentando modelo: {modelo_teste}...")
+                response = client.models.generate_content(
+                    model=modelo_teste, 
+                    contents=texto_prompt
+                )
+                if response.text:
+                    relatorio_ia = response.text
+                    print(f"Sucesso com o modelo: {modelo_teste}!")
+                    break # Sai do loop se funcionou
+            except Exception as erro_modelo:
+                print(f"Falha no modelo {modelo_teste}: {erro_modelo}")
+                continue # Pula para o próximo modelo da lista
+
     except Exception as e:
-        print(f"Erro IA detalhado: {e}")
-        # Fallback elegante com todos os dados que você pediu
-        relatorio_ia = (
-            f"🚀 **RELATÓRIO FINANCEIRO - NOSSO CAFÉ**\n\n"
-            f"Ontem ({nome_dia}): R${venda_dia:.2f}\n"
-            f"Meta: R${meta:.2f} (Superávit: R${venda_dia - meta:.2f})\n\n"
-            f"📊 **MÉTRICAS DO MÊS**\n"
-            f"Acumulado Atual: R${acumulado_mes:.2f}\n"
-            f"Média Diária: R${media_diaria_mes:.2f}\n"
-            f"Projeção Final: R${projecao_final:.2f}\n\n"
-            f"Nota: A análise da IA falhou, mas os números confirmam um ótimo desempenho!"
-        )
+        print(f"Erro crítico ao acessar lista de modelos: {e}")
+
+    # --- 4.1 TRAVA DE SEGURANÇA (Se todos os modelos falharem) ---
+    if not relatorio_ia:
+        relatorio_ia = f"""
+🚀 **NOSSO CAFÉ - RELATÓRIO DE VENDAS**
+
+Ontem ({nome_dia}): R${venda_dia:.2f}
+Meta: R${meta:.2f} (Superávit: R${venda_dia - meta:.2f})
+
+📊 **INDICADORES MENSAIS**
+Acumulado: R${acumulado_mes:.2f}
+Média Diária: R${media_diaria_mes:.2f}
+Projeção Final: R${projecao_final:.2f}
+
+Nota: O sistema de IA não respondeu a tempo, mas os dados financeiros foram processados com sucesso.
+"""
         
     enviar_email(f"Relatório Diário Nosso Café - {ontem_str}", relatorio_ia)
 
