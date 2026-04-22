@@ -9,55 +9,49 @@ from email.mime.multipart import MIMEMultipart
 from google import genai
 from dotenv import load_dotenv
 
-# Carrega variáveis do arquivo .env (local) ou do GitHub Secrets (nuvem)
+# Carrega variáveis de ambiente
 load_dotenv()
 
-# Configurações de Ambiente
+# Configurações
 SAIPOS_TOKEN = os.getenv("SAIPOS_TOKEN")
 DB_URL = os.getenv("SUPABASE_DB_URL")
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 GMAIL_USER = os.getenv("GMAIL_USER")
 GMAIL_APP_PWD = os.getenv("GMAIL_APP_PWD")
-# Lista de e-mails separados por vírgula no GitHub Secrets
 DESTINATARIOS_RAW = os.getenv("DESTINATARIO", "")
 
 def enviar_email(assunto, corpo):
-    """Envia o relatório para a lista de e-mails configurada."""
     if not DESTINATARIOS_RAW:
         print("Erro: Nenhum destinatário configurado.")
         return
-
     lista_emails = [e.strip() for e in DESTINATARIOS_RAW.split(',')]
-    
     msg = MIMEMultipart()
     msg['From'] = GMAIL_USER
     msg['To'] = ", ".join(lista_emails)
     msg['Subject'] = assunto
     msg.attach(MIMEText(corpo, 'plain'))
-
     try:
         with smtplib.SMTP('smtp.gmail.com', 587) as server:
             server.starttls()
             server.login(GMAIL_USER, GMAIL_APP_PWD)
             server.sendmail(GMAIL_USER, lista_emails, msg.as_string())
-        print(f"E-mail enviado com sucesso para: {msg['To']}")
+        print(f"E-mail enviado com sucesso!")
     except Exception as e:
         print(f"Erro ao enviar e-mail: {e}")
 
 def obter_meta(data_analise):
-    """Define a meta: R$1800 para FDS/Feriados, R$1200 para dias úteis."""
     br_holidays = holidays.Brazil()
     if data_analise.weekday() >= 5 or data_analise in br_holidays:
         return 1800.0
     return 1200.0
 
 def job_completo():
-    # --- 1. CONFIGURAÇÃO DE DATAS ---
+    # 1. Datas
     ontem_dt = datetime.now() - timedelta(days=1)
     ontem_str = ontem_dt.strftime("%Y-%m-%d")
     print(f"--- Iniciando Processamento: {ontem_str} ---")
 
-    # --- 2. SINCRONIZAÇÃO SAIPOS -> SUPABASE ---
+    # 2. Sync Saipos -> Supabase
     url = "https://data.saipos.io/v1/search_sales_v3"
     headers = {"Authorization": f"Bearer {SAIPOS_TOKEN}", "Accept": "application/json"}
     params = {
@@ -65,7 +59,6 @@ def job_completo():
         "p_filter_date_start": f"{ontem_str}T00:00:00", 
         "p_filter_date_end": f"{ontem_str}T23:59:59"
     }
-
     r = requests.get(url, headers=headers, params=params)
     vendas = r.json() if r.status_code == 200 else []
     
@@ -80,68 +73,66 @@ def job_completo():
             """, (v.get('id_sale'), v.get('created_at'), v.get('total_amount')))
         conn.commit()
 
-    # --- 3. CÁLCULO DE MÉTRICAS NO BANCO ---
+    # 3. Métricas
     cur = conn.cursor()
     meta = obter_meta(ontem_dt.date())
-
     cur.execute("SELECT SUM(valor_total) FROM vendas WHERE data_venda::date = %s", (ontem_str,))
     venda_dia = float(cur.fetchone()[0] or 0)
-
     cur.execute("SELECT SUM(valor_total) FROM vendas WHERE date_trunc('month', data_venda) = date_trunc('month', %s::date)", (ontem_str,))
     acumulado_mes = float(cur.fetchone()[0] or 0)
-
-    # Média das mesmas DOW (Day of Week) nas últimas 4 semanas
     cur.execute("""
         SELECT AVG(total) FROM (
             SELECT SUM(valor_total) as total FROM vendas 
             WHERE extract(dow from data_venda) = extract(dow from %s::date)
-            AND data_venda::date < %s 
-            GROUP BY data_venda::date 
-            ORDER BY data_venda::date DESC LIMIT 4
+            AND data_venda::date < %s GROUP BY data_venda::date ORDER BY data_venda::date DESC LIMIT 4
         ) t
     """, (ontem_str, ontem_str))
     media_4_semanas = float(cur.fetchone()[0] or 0)
     conn.close()
 
-    # --- 4. ANÁLISE COM GEMINI (Seleção Automática de Modelo) ---
+    # 4. Análise IA (Correção: Definição do Prompt e Modelo)
+    dia_semana_pt = {0: "Segunda", 1: "Terça", 2: "Quarta", 3: "Quinta", 4: "Sexta", 5: "Sábado", 6: "Domingo"}
+    nome_dia = dia_semana_pt[ontem_dt.weekday()]
+
+    # Definimos o prompt PRIMEIRO para evitar o erro de 'name not defined'
+    texto_prompt = f"""
+    Aja como CFO analítico do 'Nosso Café'. Marcos é o dono. Analise {ontem_str} ({nome_dia}):
+    - Venda Real: R${venda_dia:.2f} (Meta: R${meta:.2f})
+    - Acumulado Mês: R${acumulado_mes:.2f}
+    - Média das últimas 4 {nome_dia}s: R${media_4_semanas:.2f}
+
+    Instruções:
+    1. Seja direto e profissional.
+    2. Compare a venda com a meta e a média histórica.
+    3. Se bateu a meta, elogie o esforço da equipe (Bárbara, Laryssa, Marcela, Natali e Keity).
+    4. Se não bateu, sugira um ajuste rápido.
+    """
+
     try:
         client = genai.Client(api_key=GEMINI_KEY.strip())
         
-        # 1. Vamos listar os modelos para ver qual o nome exato que sua conta aceita
+        # Lista modelos e escolhe o melhor disponível
         modelos_disponiveis = [m.name for m in client.models.list()]
-        print(f"Modelos encontrados na sua conta: {modelos_disponiveis}")
-
-        # 2. Tentamos selecionar o melhor na ordem de preferência
-        # No Google Cloud/AI Studio em 2026, os nomes perderam o prefixo 'models/' em muitos casos
+        print(f"Modelos: {modelos_disponiveis}")
+        
+        # Ordem de preferência
         opcoes = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-3-flash']
-        modelo_escolhido = None
+        modelo_escolhido = next((opt for opt in opcoes if any(opt in m for m in modelos_disponiveis)), 'gemini-1.5-flash')
         
-        for opcao in opcoes:
-            # Verifica se a opção (ou 'models/'+opcao) está na lista
-            if any(opcao in m for m in modelos_disponiveis):
-                modelo_escolhido = opcao
-                break
-        
-        if not modelo_escolhido:
-            # Se não achou nenhum da lista, pega o primeiro que aparecer
-            modelo_escolhido = modelos_disponiveis[0].split('/')[-1]
-
-        print(f"Usando o modelo: {modelo_escolhido}")
+        print(f"Usando: {modelo_escolhido}")
 
         response = client.models.generate_content(
             model=modelo_escolhido, 
-            contents=prompt
+            contents=texto_prompt
         )
         relatorio_ia = response.text
-
     except Exception as e:
-        print(f"Erro ao chamar IA: {e}")
-        relatorio_ia = f"Erro na análise de IA: {e}\n\nVenda: R${venda_dia:.2f}\nMeta: R${meta:.2f}"
+        print(f"Erro IA: {e}")
+        relatorio_ia = f"Análise resumida (IA indisponível):\nVenda: R${venda_dia:.2f}\nMeta: R${meta:.2f}\nAcumulado: R${acumulado_mes:.2f}"
 
-    # --- 5. ENVIO DO RELATÓRIO ---
+    # 5. Envio
     assunto = f"Relatório Diário Nosso Café - {ontem_str}"
     enviar_email(assunto, relatorio_ia)
-    print("Processo finalizado com sucesso.")
 
 if __name__ == "__main__":
     job_completo()
