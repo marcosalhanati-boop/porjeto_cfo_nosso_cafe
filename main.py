@@ -7,8 +7,10 @@ import calendar
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from google import genai  # Novo padrão 2026
 from dotenv import load_dotenv
+
+# MUDANÇA AQUI: Importação direta do novo SDK
+import google.genai as genai
 
 load_dotenv()
 
@@ -110,12 +112,18 @@ def job_completo():
     """
 
     try:
+        # A nova biblioteca usa Client() dentro do módulo genai
         client = genai.Client(api_key=GEMINI_KEY.strip())
-        response = client.models.generate_content(model='gemini-1.5-flash', contents=texto_prompt)
+        
+        response = client.models.generate_content(
+            model='gemini-1.5-flash', 
+            contents=texto_prompt
+        )
         relatorio_ia = response.text
     except Exception as e:
-        relatorio_ia = f"Relatório Resumido:\n\nVenda: R${venda_dia:.2f}\nMeta: R${meta:.2f}\nAcumulado: R${acumulado_mes:.2f}\nProjeção: R${projecao_final:.2f}\nErro IA: {e}"
-
+        print(f"Erro IA detalhado: {e}")
+        relatorio_ia = f"Venda: R${venda_dia:.2f}\nMeta: R${meta:.2f}\nAcumulado: R${acumulado_mes:.2f}\nProjeção: R${projecao_final:.2f}\nErro IA: {e}"
+        
     enviar_email(f"Relatório Diário Nosso Café - {ontem_str}", relatorio_ia)
 
 if __name__ == "__main__":
