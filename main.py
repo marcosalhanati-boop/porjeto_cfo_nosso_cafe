@@ -89,7 +89,7 @@ def job_completo():
     """, (ontem_str, ontem_str))
     media_4_semanas = float(cur.fetchone()[0] or 0)
     conn.close()
-
+    
     # 4. Análise IA (Correção: Definição do Prompt e Modelo)
     dia_semana_pt = {0: "Segunda", 1: "Terça", 2: "Quarta", 3: "Quinta", 4: "Sexta", 5: "Sábado", 6: "Domingo"}
     nome_dia = dia_semana_pt[ontem_dt.weekday()]
@@ -111,24 +111,16 @@ def job_completo():
     try:
         client = genai.Client(api_key=GEMINI_KEY.strip())
         
-        # Lista modelos e escolhe o melhor disponível
-        modelos_disponiveis = [m.name for m in client.models.list()]
-        print(f"Modelos: {modelos_disponiveis}")
-        
-        # Ordem de preferência
-        opcoes = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-3-flash']
-        modelo_escolhido = next((opt for opt in opcoes if any(opt in m for m in modelos_disponiveis)), 'gemini-1.5-flash')
-        
-        print(f"Usando: {modelo_escolhido}")
-
+        # Usando o identificador estável para evitar o 404 de 'modelo não encontrado'
+        # Em 2026, o 'gemini-1.5-flash' é o Porto Seguro para automações
         response = client.models.generate_content(
-            model=modelo_escolhido, 
+            model='gemini-1.5-flash', 
             contents=texto_prompt
         )
         relatorio_ia = response.text
     except Exception as e:
-        print(f"Erro IA: {e}")
-        relatorio_ia = f"Análise resumida (IA indisponível):\nVenda: R${venda_dia:.2f}\nMeta: R${meta:.2f}\nAcumulado: R${acumulado_mes:.2f}"
+        print(f"Erro IA detalhado: {e}")
+        relatorio_ia = f"Análise resumida (IA Offline):\n\nVenda: R${venda_dia:.2f}\nMeta: R${meta:.2f}\nAcumulado: R${acumulado_mes:.2f}\nErro: {e}"
 
     # 5. Envio
     assunto = f"Relatório Diário Nosso Café - {ontem_str}"
