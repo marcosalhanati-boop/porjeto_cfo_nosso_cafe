@@ -90,11 +90,10 @@ def job_completo():
     media_4_semanas = float(cur.fetchone()[0] or 0)
     conn.close()
     
-    # 4. Análise IA (Correção: Definição do Prompt e Modelo)
+    # --- 4. ANÁLISE COM GEMINI (Versão Estável) ---
     dia_semana_pt = {0: "Segunda", 1: "Terça", 2: "Quarta", 3: "Quinta", 4: "Sexta", 5: "Sábado", 6: "Domingo"}
     nome_dia = dia_semana_pt[ontem_dt.weekday()]
 
-    # Definimos o prompt PRIMEIRO para evitar o erro de 'name not defined'
     texto_prompt = f"""
     Aja como CFO analítico do 'Nosso Café'. Marcos é o dono. Analise {ontem_str} ({nome_dia}):
     - Venda Real: R${venda_dia:.2f} (Meta: R${meta:.2f})
@@ -103,29 +102,17 @@ def job_completo():
 
     Instruções:
     1. Seja direto e profissional.
-    2. Compare a venda com a meta e a média histórica.
-    3. Se bateu a meta, elogie o esforço da equipe (Bárbara, Laryssa, Marcela, Natali e Keity).
-    4. Se não bateu, sugira um ajuste rápido.
+    2. Se bateu a meta, elogie a equipe (Bárbara, Laryssa, Marcela, Natali e Keity).
     """
 
-    # --- 4. ANÁLISE COM GEMINI (Ajuste de Rota Estável) ---
-   try:
+    try:
         genai.configure(api_key=GEMINI_KEY.strip())
-        # Usando o modelo flash estável
         model = genai.GenerativeModel('gemini-1.5-flash')
-        
         response = model.generate_content(texto_prompt)
         relatorio_ia = response.text
-        
     except Exception as e:
         print(f"Erro IA detalhado: {e}")
-        relatorio_ia = (
-            f"Análise resumida (IA Offline):\n\n"
-            f"Venda: R${venda_dia:.2f}\n"
-            f"Meta: R${meta:.2f}\n"
-            f"Acumulado Mês: R${acumulado_mes:.2f}\n\n"
-            f"Erro técnico: {e}"
-        )
+        relatorio_ia = f"Venda: R${venda_dia:.2f}\nMeta: R${meta:.2f}\nErro IA: {e}"
 
     # 5. Envio
     assunto = f"Relatório Diário Nosso Café - {ontem_str}"
