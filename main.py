@@ -3,13 +3,13 @@ import requests
 import psycopg2
 import holidays
 import smtplib
-import google.generativeai as genai
+import calendar
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from google import genai  # Novo padrão 2026
 from dotenv import load_dotenv
 
-# Carrega variáveis de ambiente
 load_dotenv()
 
 # Configurações
@@ -21,9 +21,7 @@ GMAIL_APP_PWD = os.getenv("GMAIL_APP_PWD")
 DESTINATARIOS_RAW = os.getenv("DESTINATARIO", "")
 
 def enviar_email(assunto, corpo):
-    if not DESTINATARIOS_RAW:
-        print("Erro: Nenhum destinatário configurado.")
-        return
+    if not DESTINATARIOS_RAW: return
     lista_emails = [e.strip() for e in DESTINATARIOS_RAW.split(',')]
     msg = MIMEMultipart()
     msg['From'] = GMAIL_USER
@@ -35,9 +33,8 @@ def enviar_email(assunto, corpo):
             server.starttls()
             server.login(GMAIL_USER, GMAIL_APP_PWD)
             server.sendmail(GMAIL_USER, lista_emails, msg.as_string())
-        print(f"E-mail enviado com sucesso!")
     except Exception as e:
-        print(f"Erro ao enviar e-mail: {e}")
+        print(f"Erro e-mail: {e}")
 
 def obter_meta(data_analise):
     br_holidays = holidays.Brazil()
@@ -49,7 +46,9 @@ def job_completo():
     # 1. Datas
     ontem_dt = datetime.now() - timedelta(days=1)
     ontem_str = ontem_dt.strftime("%Y-%m-%d")
-    print(f"--- Iniciando Processamento: {ontem_str} ---")
+    dia_semana_pt = {0: "Segunda", 1: "Terça", 2: "Quarta", 3: "Quinta", 4: "Sexta", 5: "Sábado", 6: "Domingo"}
+    nome_dia = dia_semana_pt[ontem_dt.weekday()]
+    print(f"--- Iniciando Processamento: {ontem_str} ({nome_dia}) ---")
 
     # 2. Sync Saipos -> Supabase
     url = "https://data.saipos.io/v1/search_sales_v3"
@@ -73,29 +72,21 @@ def job_completo():
             """, (v.get('id_sale'), v.get('created_at'), v.get('total_amount')))
         conn.commit()
 
-    # --- 3. MÉTRICAS E PROJEÇÃO ---
+    # 3. Métricas e Projeção
     cur = conn.cursor()
     meta = obter_meta(ontem_dt.date())
     
-    # Venda do dia
     cur.execute("SELECT SUM(valor_total) FROM vendas WHERE data_venda::date = %s", (ontem_str,))
     venda_dia = float(cur.fetchone()[0] or 0)
 
-    # Acumulado do mês
     cur.execute("SELECT SUM(valor_total) FROM vendas WHERE date_trunc('month', data_venda) = date_trunc('month', %s::date)", (ontem_str,))
     acumulado_mes = float(cur.fetchone()[0] or 0)
 
-    # Média diária real do mês atual
     dia_atual = ontem_dt.day
     media_diaria_mes = acumulado_mes / dia_atual
-
-    # Projeção para o fim do mês
-    import calendar
     ultimo_dia = calendar.monthrange(ontem_dt.year, ontem_dt.month)[1]
-    dias_restantes = ultimo_dia - dia_atual
-    projecao_final = acumulado_mes + (media_diaria_mes * dias_restantes)
+    projecao_final = media_diaria_mes * ultimo_dia
 
-    # Média histórica das últimas 4 semanas (mesmo dia da semana)
     cur.execute("""
         SELECT AVG(total) FROM (
             SELECT SUM(valor_total) as total FROM vendas 
@@ -105,54 +96,27 @@ def job_completo():
     """, (ontem_str, ontem_str))
     media_4_semanas = float(cur.fetchone()[0] or 0)
     conn.close()
-    
-   # --- 4. ANÁLISE COM GEMINI (Versão com Projeção e Auto-Correção) ---
+
+    # 4. Análise IA (Utilizando a nova biblioteca google-genai)
     texto_prompt = f"""
-    Analise os resultados do 'Nosso Café' em {ontem_str}:
+    Aja como CFO do 'Nosso Café'. Analise os resultados de {ontem_str} ({nome_dia}):
     - Venda Real: R${venda_dia:.2f} (Meta: R${meta:.2f})
     - Acumulado Mês: R${acumulado_mes:.2f}
     - Média Diária no Mês: R${media_diaria_mes:.2f}
     - Projeção Final do Mês: R${projecao_final:.2f}
     - Média das últimas 4 {nome_dia}s: R${media_4_semanas:.2f}
 
-    Instruções:
-    1. Comente sobre o superávit de ontem.
-    2. Avalie se a projeção final (R${projecao_final:.2f}) está saudável para o negócio.
-    3. Elogie a equipe (Bárbara, Laryssa, Marcela, Natali e Keity) pelo resultado.
+    Instruções: Comente o superávit, a projeção e elogie Bárbara, Laryssa, Marcela, Natali e Keity.
     """
 
     try:
-        genai.configure(api_key=GEMINI_KEY.strip())
-        # Tentativa 1: Nome direto
-        try:
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            response = model.generate_content(texto_prompt)
-            relatorio_ia = response.text
-        except:
-            # Tentativa 2: Nome com prefixo (caso a primeira falhe)
-            model = genai.GenerativeModel('models/gemini-1.5-flash')
-            response = model.generate_content(texto_prompt)
-            relatorio_ia = response.text
-            
+        client = genai.Client(api_key=GEMINI_KEY.strip())
+        response = client.models.generate_content(model='gemini-1.5-flash', contents=texto_prompt)
+        relatorio_ia = response.text
     except Exception as e:
-        # Se as duas falharem, o e-mail vai com os dados formatados por nós:
-        relatorio_ia = f"""
-        🚀 **RELATÓRIO DE VENDAS - NOSSO CAFÉ**
-        
-        Ontem ({nome_dia}): R${venda_dia:.2f}
-        Meta: R${meta:.2f} (Superávit: R${venda_dia - meta:.2f})
-        
-        📊 **VISÃO MENSAL**
-        Acumulado: R${acumulado_mes:.2f}
-        Média Diária: R${media_diaria_mes:.2f}
-        Projeção Fim do Mês: R${projecao_final:.2f}
-        
-        *Nota: Análise automática indisponível no momento.*
-        """
+        relatorio_ia = f"Relatório Resumido:\n\nVenda: R${venda_dia:.2f}\nMeta: R${meta:.2f}\nAcumulado: R${acumulado_mes:.2f}\nProjeção: R${projecao_final:.2f}\nErro IA: {e}"
 
-    # 5. Envio
-    assunto = f"Relatório Diário Nosso Café - {ontem_str}"
-    enviar_email(assunto, relatorio_ia)
+    enviar_email(f"Relatório Diário Nosso Café - {ontem_str}", relatorio_ia)
 
 if __name__ == "__main__":
     job_completo()
