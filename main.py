@@ -111,48 +111,48 @@ def job_completo():
     Instruções: Comente o superávit, a projeção e elogie Bárbara, Laryssa, Marcela, Natali e Keity.
     """
 
-    # --- 4. ANÁLISE COM GEMINI (PROTOCOLO DE AUTO-DESCOBERTA) ---
+    # --- 4. ANÁLISE COM GEMINI (PROTOCOLO DE TENTATIVA SIMPLIFICADO) ---
     relatorio_ia = ""
     try:
         client = genai.Client(api_key=GEMINI_KEY.strip())
         
-        # 1. Busca todos os modelos que suportam geração de conteúdo na sua conta
-        modelos_na_conta = [m.name for m in client.models.list() if 'generateContent' in m.supported_methods]
-        print(f"Modelos encontrados: {modelos_na_conta}")
+        # 1. Busca os nomes de todos os modelos disponíveis sem filtrar por atributos
+        # Em 2026, isso retorna uma lista de objetos onde o .name é o ID que precisamos
+        modelos_disponiveis = [m.name for m in client.models.list()]
+        print(f"Modelos encontrados na conta: {modelos_disponiveis}")
 
-        # 2. Lista de preferência (do mais moderno para o mais estável)
-        preferencia = ['gemini-3-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']
+        # 2. Ordem de preferência (nossos "favoritos")
+        preferencia = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-3-flash']
         
-        # Criamos a fila de tentativa: primeiro os da preferência, depois qualquer outro que sobrar
+        # Reorganiza a fila: coloca os preferidos na frente, o resto depois
         fila_tentativa = []
         for p in preferencia:
-            for m in modelos_na_conta:
+            for m in modelos_disponiveis:
                 if p in m: fila_tentativa.append(m)
         
-        # Adiciona o restante dos modelos disponíveis que não estavam na preferência
-        for m in modelos_na_conta:
+        for m in modelos_disponiveis:
             if m not in fila_tentativa: fila_tentativa.append(m)
 
-        # 3. Loop de teste: tenta cada modelo até um responder com sucesso
+        # 3. Loop de execução
         for modelo_teste in fila_tentativa:
             try:
-                print(f"Tentando modelo: {modelo_teste}...")
+                print(f"Tentando: {modelo_teste}...")
                 response = client.models.generate_content(
                     model=modelo_teste, 
                     contents=texto_prompt
                 )
-                if response.text:
+                if response and response.text:
                     relatorio_ia = response.text
-                    print(f"Sucesso com o modelo: {modelo_teste}!")
-                    break # Sai do loop se funcionou
-            except Exception as erro_modelo:
-                print(f"Falha no modelo {modelo_teste}: {erro_modelo}")
-                continue # Pula para o próximo modelo da lista
+                    print(f"Sucesso absoluto com: {modelo_teste}!")
+                    break
+            except Exception as e_mod:
+                print(f"Modelo {modelo_teste} recusou: {e_mod}")
+                continue
 
-    except Exception as e:
-        print(f"Erro crítico ao acessar lista de modelos: {e}")
+    except Exception as e_critico:
+        print(f"Erro ao acessar API do Google: {e_critico}")
 
-    # --- 4.1 TRAVA DE SEGURANÇA (Se todos os modelos falharem) ---
+    # --- 4.1 FALLBACK FORMATADO (Mantido para segurança) ---
     if not relatorio_ia:
         relatorio_ia = f"""
 🚀 **NOSSO CAFÉ - RELATÓRIO DE VENDAS**
@@ -165,7 +165,7 @@ Acumulado: R${acumulado_mes:.2f}
 Média Diária: R${media_diaria_mes:.2f}
 Projeção Final: R${projecao_final:.2f}
 
-Nota: O sistema de IA não respondeu a tempo, mas os dados financeiros foram processados com sucesso.
+Nota: O sistema de IA (CFO) está em manutenção, mas os números acima são oficiais.
 """
         
     enviar_email(f"Relatório Diário Nosso Café - {ontem_str}", relatorio_ia)
