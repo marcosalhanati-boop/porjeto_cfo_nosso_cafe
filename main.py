@@ -73,13 +73,29 @@ def job_completo():
             """, (v.get('id_sale'), v.get('created_at'), v.get('total_amount')))
         conn.commit()
 
-    # 3. Métricas
+    # --- 3. MÉTRICAS E PROJEÇÃO ---
     cur = conn.cursor()
     meta = obter_meta(ontem_dt.date())
+    
+    # Venda do dia
     cur.execute("SELECT SUM(valor_total) FROM vendas WHERE data_venda::date = %s", (ontem_str,))
     venda_dia = float(cur.fetchone()[0] or 0)
+
+    # Acumulado do mês
     cur.execute("SELECT SUM(valor_total) FROM vendas WHERE date_trunc('month', data_venda) = date_trunc('month', %s::date)", (ontem_str,))
     acumulado_mes = float(cur.fetchone()[0] or 0)
+
+    # Média diária real do mês atual
+    dia_atual = ontem_dt.day
+    media_diaria_mes = acumulado_mes / dia_atual
+
+    # Projeção para o fim do mês
+    import calendar
+    ultimo_dia = calendar.monthrange(ontem_dt.year, ontem_dt.month)[1]
+    dias_restantes = ultimo_dia - dia_atual
+    projecao_final = acumulado_mes + (media_diaria_mes * dias_restantes)
+
+    # Média histórica das últimas 4 semanas (mesmo dia da semana)
     cur.execute("""
         SELECT AVG(total) FROM (
             SELECT SUM(valor_total) as total FROM vendas 
@@ -90,38 +106,49 @@ def job_completo():
     media_4_semanas = float(cur.fetchone()[0] or 0)
     conn.close()
     
-    # --- 4. ANÁLISE COM GEMINI (Versão Estável) ---
-    dia_semana_pt = {0: "Segunda", 1: "Terça", 2: "Quarta", 3: "Quinta", 4: "Sexta", 5: "Sábado", 6: "Domingo"}
-    nome_dia = dia_semana_pt[ontem_dt.weekday()]
-
+   # --- 4. ANÁLISE COM GEMINI (Versão com Projeção e Auto-Correção) ---
     texto_prompt = f"""
-    Aja como CFO analítico do 'Nosso Café'. Marcos é o dono. Analise {ontem_str} ({nome_dia}):
+    Analise os resultados do 'Nosso Café' em {ontem_str}:
     - Venda Real: R${venda_dia:.2f} (Meta: R${meta:.2f})
     - Acumulado Mês: R${acumulado_mes:.2f}
+    - Média Diária no Mês: R${media_diaria_mes:.2f}
+    - Projeção Final do Mês: R${projecao_final:.2f}
     - Média das últimas 4 {nome_dia}s: R${media_4_semanas:.2f}
 
     Instruções:
-    1. Seja direto e profissional.
-    2. Se bateu a meta, elogie a equipe (Bárbara, Laryssa, Marcela, Natali e Keity).
+    1. Comente sobre o superávit de ontem.
+    2. Avalie se a projeção final (R${projecao_final:.2f}) está saudável para o negócio.
+    3. Elogie a equipe (Bárbara, Laryssa, Marcela, Natali e Keity) pelo resultado.
     """
 
     try:
         genai.configure(api_key=GEMINI_KEY.strip())
-        # MUDANÇA AQUI: Adicionamos 'models/' antes do nome
-        model = genai.GenerativeModel('models/gemini-1.5-flash') 
-        response = model.generate_content(texto_prompt)
-        relatorio_ia = response.text
+        # Tentativa 1: Nome direto
+        try:
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            response = model.generate_content(texto_prompt)
+            relatorio_ia = response.text
+        except:
+            # Tentativa 2: Nome com prefixo (caso a primeira falhe)
+            model = genai.GenerativeModel('models/gemini-1.5-flash')
+            response = model.generate_content(texto_prompt)
+            relatorio_ia = response.text
+            
     except Exception as e:
-        print(f"Erro IA detalhado: {e}")
-        # Melhorei o fallback para você já receber os dados mastigados mesmo sem a IA
-        relatorio_ia = (
-            f"🚀 **META BATIDA NO FERIADO!**\n\n"
-            f"Venda: R${venda_dia:.2f}\n"
-            f"Meta: R${meta:.2f}\n"
-            f"Superavit: R${venda_dia - meta:.2f}\n\n"
-            f"Nota: A análise detalhada da IA falhou (Erro: {e}), "
-            f"mas os números mostram um resultado excelente!"
-        )
+        # Se as duas falharem, o e-mail vai com os dados formatados por nós:
+        relatorio_ia = f"""
+        🚀 **RELATÓRIO DE VENDAS - NOSSO CAFÉ**
+        
+        Ontem ({nome_dia}): R${venda_dia:.2f}
+        Meta: R${meta:.2f} (Superávit: R${venda_dia - meta:.2f})
+        
+        📊 **VISÃO MENSAL**
+        Acumulado: R${acumulado_mes:.2f}
+        Média Diária: R${media_diaria_mes:.2f}
+        Projeção Fim do Mês: R${projecao_final:.2f}
+        
+        *Nota: Análise automática indisponível no momento.*
+        """
 
     # 5. Envio
     assunto = f"Relatório Diário Nosso Café - {ontem_str}"
