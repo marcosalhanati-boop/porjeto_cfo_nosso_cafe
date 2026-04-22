@@ -3,7 +3,7 @@ import requests
 import psycopg2
 import holidays
 import smtplib
-import google.generativeai as genai
+from google import genai
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
