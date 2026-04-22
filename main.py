@@ -122,8 +122,23 @@ def job_completo():
     4. Se bateu a meta, reconheça o esforço da equipe (Bárbara, Laryssa, etc).
     """
 
-    response = client.models.generate_content(model='gemini-3-flash', contents=prompt)
-    relatorio_ia = response.text
+    # --- 4. ANÁLISE COM GEMINI (Com Fallback de Segurança) ---
+    try:
+        client = genai.Client(api_key=GEMINI_KEY)
+        
+        # Tentamos o modelo mais recente disponível
+        model_name = 'gemini-1.5-flash' 
+        
+        response = client.models.generate_content(
+            model=model_name, 
+            contents=prompt
+        )
+        relatorio_ia = response.text
+    except Exception as e:
+        print(f"Erro ao chamar IA: {e}. Tentando modelo alternativo...")
+        # Caso o 1.5 também falhe por algum motivo de rede, usamos um texto padrão 
+        # para não quebrar o envio do e-mail.
+        relatorio_ia = f"Erro na análise de IA. Venda: R${venda_dia:.2f}. Meta: R${meta:.2f}."
 
     # --- 5. ENVIO DO RELATÓRIO ---
     assunto = f"Relatório Diário Nosso Café - {ontem_str}"
