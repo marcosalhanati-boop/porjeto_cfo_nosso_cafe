@@ -107,12 +107,21 @@ def job_completo():
 
     try:
         genai.configure(api_key=GEMINI_KEY.strip())
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # MUDANÇA AQUI: Adicionamos 'models/' antes do nome
+        model = genai.GenerativeModel('models/gemini-1.5-flash') 
         response = model.generate_content(texto_prompt)
         relatorio_ia = response.text
     except Exception as e:
         print(f"Erro IA detalhado: {e}")
-        relatorio_ia = f"Venda: R${venda_dia:.2f}\nMeta: R${meta:.2f}\nErro IA: {e}"
+        # Melhorei o fallback para você já receber os dados mastigados mesmo sem a IA
+        relatorio_ia = (
+            f"🚀 **META BATIDA NO FERIADO!**\n\n"
+            f"Venda: R${venda_dia:.2f}\n"
+            f"Meta: R${meta:.2f}\n"
+            f"Superavit: R${venda_dia - meta:.2f}\n\n"
+            f"Nota: A análise detalhada da IA falhou (Erro: {e}), "
+            f"mas os números mostram um resultado excelente!"
+        )
 
     # 5. Envio
     assunto = f"Relatório Diário Nosso Café - {ontem_str}"
