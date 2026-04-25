@@ -84,7 +84,17 @@ def job_completo():
     print(f"--- Iniciando Processamento: {ontem_str} ({nome_dia}) ---")
 
     # --- 2. SYNC SAIPOS -> SUPABASE (Com Forma de Pagamento) ---
-    # ... (código do request r = requests.get permanece igual) ...
+    url = "https://data.saipos.io/v1/search_sales_v3"
+    headers = {"Authorization": f"Bearer {SAIPOS_TOKEN}", "Accept": "application/json"}
+    params = {
+        "p_date_column_filter": "shift_date", 
+        "p_filter_date_start": f"{ontem_str}T00:00:00", 
+        "p_filter_date_end": f"{ontem_str}T23:59:59"
+    }
+    
+    # ESTA É A LINHA QUE ESTAVA FALTANDO:
+    r = requests.get(url, headers=headers, params=params)
+    
     vendas = r.json() if r.status_code == 200 else []
     
     conn = psycopg2.connect(DB_URL)
@@ -100,7 +110,6 @@ def job_completo():
                     forma_pagamento = EXCLUDED.forma_pagamento;
             """, (v.get('id_sale'), v.get('created_at'), v.get('total_amount'), forma))
         conn.commit()
-
     # --- 3. MÉTRICAS E NOVA META ---
     cur = conn.cursor()
     meta_hoje = calcular_meta_dinamica(cur, ontem_dt.date())
