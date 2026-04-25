@@ -53,22 +53,27 @@ def rodar_carga_itens():
             id_venda = venda.get('id_sale')
             shift_date = venda.get('shift_date')
             
-            for item in venda.get('items', []):
+            # O .get('items') or [] garante que, se não houver itens, 
+            # ele retorna uma lista vazia em vez de None, evitando o erro.
+            lista_itens = venda.get('items')
+            if lista_itens is None:
+                continue
+
+            for item in lista_itens:
                 # Filtro de deletados conforme PDF
                 if item.get('deleted') == 1:
                     continue
                 
+                # Coleta os dados com segurança
+                nome = item.get('desc_sale_item', 'Produto Indefinido')
+                qtd = float(item.get('quantity') or 0)
+                preco = float(item.get('unit_price') or 0)
+                total = qtd * preco
+                
                 cur.execute("""
                     INSERT INTO itens_venda (id_venda, data_venda, produto, quantidade, valor_unitario, valor_total_item)
                     VALUES (%s, %s, %s, %s, %s, %s)
-                """, (
-                    id_venda, 
-                    shift_date, 
-                    item.get('desc_sale_item'), 
-                    float(item.get('quantity', 0)), 
-                    float(item.get('unit_price', 0)),
-                    float(item.get('quantity', 0)) * float(item.get('unit_price', 0))
-                ))
+                """, (id_venda, shift_date, nome, qtd, preco, total))
                 itens_inseridos += 1
         
         conn.commit()
