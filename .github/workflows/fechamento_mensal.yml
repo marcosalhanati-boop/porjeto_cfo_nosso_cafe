@@ -1,0 +1,24 @@
+name: Fechamento Mensal Estratégico
+on:
+  schedule:
+    - cron: '0 9 1 * *' # Roda às 09:00 UTC (06:00 Brasília) no dia 1 de cada mês
+  workflow_dispatch: # Permite rodar manualmente para testar
+
+jobs:
+  fechamento:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install pandas matplotlib psycopg2-binary python-dotenv
+      - name: Run Fechamento
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PWD: ${{ secrets.GMAIL_APP_PWD }}
+          DESTINATARIO: ${{ secrets.DESTINATARIO }}
+        run: python fechamento_mensal.py
