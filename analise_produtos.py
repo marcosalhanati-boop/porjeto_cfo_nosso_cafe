@@ -1,56 +1,85 @@
 import os
 import requests
+import psycopg2
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 load_dotenv()
 
-def diagnostico_saipos():
-    # Testando com Ontem
+SAIPOS_TOKEN = os.getenv("SAIPOS_TOKEN")
+DB_URL = os.getenv("SUPABASE_DB_URL")
+
+def rodar_carga_itens():
     ontem_dt = datetime.now() - timedelta(days=1)
     ontem_str = ontem_dt.strftime('%Y-%m-%d')
     
-    print(f"--- DIAGNÓSTICO DE CARGA ---")
-    print(f"Data de busca: {ontem_str}")
+    print(f"--- Iniciando Carga de Itens: {ontem_str} ---")
     
     url = "https://data.saipos.io/v1/sales_items"
+    
+    # AJUSTE CHAVE: A documentação exige 'Bearer ' antes do token
+    token_formatado = f"Bearer {SAIPOS_TOKEN.replace('Bearer ', '')}"
+    
     headers = {
-        "Authorization": os.getenv("SAIPOS_TOKEN"),
+        "Authorization": token_formatado,
         "accept": "application/json"
     }
     
-    # Testamos dois formatos de data comuns na Saipos
-    formatos_para_testar = [
-        f"{ontem_str} 00:00:00",
-        ontem_str
-    ]
+    # AJUSTE DATA: Seguindo o padrão do PDF (YYYY-MM-DD HH:MM)
+    params = {
+        "p_date_column_filter": "shift_date",
+        "p_filter_date_start": f"{ontem_str} 00:00",
+        "p_filter_date_end": f"{ontem_str} 23:59"
+    }
 
-    for data_teste in formatos_para_testar:
-        params = {
-            "p_date_column_filter": "shift_date",
-            "p_filter_date_start": data_teste,
-            "p_filter_date_end": f"{ontem_str} 23:59:59" if " " in data_teste else ontem_str
-        }
-        
-        print(f"\nTestando formato: {params['p_filter_date_start']}")
+    try:
         r = requests.get(url, headers=headers, params=params)
         
-        print(f"Status Code: {r.status_code}")
-        
-        if r.status_code == 200:
-            vendas = r.json()
-            print(f"Vendas encontradas: {len(vendas)}")
+        if r.status_code != 200:
+            print(f"Erro Saipos ({r.status_code}): {r.text}")
+            return
+
+        vendas = r.json()
+        print(f"Sucesso! {len(vendas)} vendas recuperadas.")
+
+        if not vendas:
+            return
+
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+
+        itens_inseridos = 0
+        for venda in vendas:
+            id_venda = venda.get('id_sale')
+            shift_date = venda.get('shift_date')
             
-            if len(vendas) > 0:
-                primeira_venda = vendas[0]
-                print(f"ID da primeira venda: {primeira_venda.get('id_sale')}")
-                itens = primeira_venda.get('items', [])
-                print(f"Quantidade de itens na primeira venda: {len(itens)}")
-                if len(itens) > 0:
-                    print(f"Exemplo de produto: {itens[0].get('desc_sale_item')}")
-                return # Se encontrou, paramos por aqui
-        else:
-            print(f"Erro na resposta: {r.text}")
+            for item in venda.get('items', []):
+                # Filtro de deletados conforme PDF
+                if item.get('deleted') == 1:
+                    continue
+                
+                cur.execute("""
+                    INSERT INTO itens_venda (id_venda, data_venda, produto, quantidade, valor_unitario, valor_total_item)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (
+                    id_venda, 
+                    shift_date, 
+                    item.get('desc_sale_item'), 
+                    float(item.get('quantity', 0)), 
+                    float(item.get('unit_price', 0)),
+                    float(item.get('quantity', 0)) * float(item.get('unit_price', 0))
+                ))
+                itens_inseridos += 1
+        
+        conn.commit()
+        print(f"Carga finalizada: {itens_inseridos} itens salvos no Supabase.")
+
+    except Exception as e:
+        print(f"Erro Crítico: {e}")
+    finally:
+        if 'conn' in locals():
+            cur.close()
+            conn.close()
 
 if __name__ == "__main__":
-    diagnostico_saipos()
+    rodar_carga_itens()
