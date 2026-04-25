@@ -1,65 +1,56 @@
 import os
 import requests
-import psycopg2
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 load_dotenv()
 
-SAIPOS_TOKEN = os.getenv("SAIPOS_TOKEN")
-DB_URL = os.getenv("SUPABASE_DB_URL")
-
-def job_itens_detalhados():
-    # Ontem para análise diária
+def diagnostico_saipos():
+    # Testando com Ontem
     ontem_dt = datetime.now() - timedelta(days=1)
     ontem_str = ontem_dt.strftime('%Y-%m-%d')
     
+    print(f"--- DIAGNÓSTICO DE CARGA ---")
+    print(f"Data de busca: {ontem_str}")
+    
     url = "https://data.saipos.io/v1/sales_items"
-    headers = {"Authorization": f"Bearer {SAIPOS_TOKEN}", "accept": "application/json"}
-    params = {
-        "p_date_column_filter": "shift_date",
-        "p_filter_date_start": f"{ontem_str} 00:00:00",
-        "p_filter_date_end": f"{ontem_str} 23:59:59"
+    headers = {
+        "Authorization": os.getenv("SAIPOS_TOKEN"),
+        "accept": "application/json"
     }
+    
+    # Testamos dois formatos de data comuns na Saipos
+    formatos_para_testar = [
+        f"{ontem_str} 00:00:00",
+        ontem_str
+    ]
 
-    print(f"Buscando itens de: {ontem_str}")
-    r = requests.get(url, headers=headers, params=params)
-    vendas = r.json() if r.status_code == 200 else []
-
-    conn = psycopg2.connect(DB_URL)
-    cur = conn.cursor()
-
-    itens_processados = 0
-    try:
-        for venda in vendas:
-            data_venda = venda.get('shift_date')
-            id_venda = venda.get('id_sale')
+    for data_teste in formatos_para_testar:
+        params = {
+            "p_date_column_filter": "shift_date",
+            "p_filter_date_start": data_teste,
+            "p_filter_date_end": f"{ontem_str} 23:59:59" if " " in data_teste else ontem_str
+        }
+        
+        print(f"\nTestando formato: {params['p_filter_date_start']}")
+        r = requests.get(url, headers=headers, params=params)
+        
+        print(f"Status Code: {r.status_code}")
+        
+        if r.status_code == 200:
+            vendas = r.json()
+            print(f"Vendas encontradas: {len(vendas)}")
             
-            for item in venda.get('items', []):
-                # Regra da documentação: ignorar itens deletados (transferências)
-                if item.get('deleted') == 1:
-                    continue
-                
-                nome_produto = item.get('desc_sale_item')
-                qtd = float(item.get('quantity', 0))
-                preco_unit = float(item.get('unit_price', 0))
-                total_item = qtd * preco_unit
-                
-                cur.execute("""
-                    INSERT INTO itens_venda (id_venda, data_venda, produto, quantidade, valor_unitario, valor_total_item)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                """, (id_venda, data_venda, nome_produto, qtd, preco_unit, total_item))
-                itens_processados += 1
-        
-        conn.commit()
-        print(f"Sucesso! {itens_processados} itens inseridos no banco.")
-        
-    except Exception as e:
-        print(f"Erro ao salvar itens: {e}")
-        conn.rollback()
-    finally:
-        cur.close()
-        conn.close()
+            if len(vendas) > 0:
+                primeira_venda = vendas[0]
+                print(f"ID da primeira venda: {primeira_venda.get('id_sale')}")
+                itens = primeira_venda.get('items', [])
+                print(f"Quantidade de itens na primeira venda: {len(itens)}")
+                if len(itens) > 0:
+                    print(f"Exemplo de produto: {itens[0].get('desc_sale_item')}")
+                return # Se encontrou, paramos por aqui
+        else:
+            print(f"Erro na resposta: {r.text}")
 
 if __name__ == "__main__":
-    job_itens_detalhados()
+    diagnostico_saipos()
