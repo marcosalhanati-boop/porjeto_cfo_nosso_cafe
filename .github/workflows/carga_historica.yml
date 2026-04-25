@@ -1,0 +1,28 @@
+name: Carga Histórica de Itens (Backfill)
+
+on:
+  workflow_dispatch: # Permite que você clique no botão para rodar manualmente
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v3
+
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Instalar Dependências
+        run: |
+          pip install requests psycopg2-binary python-dotenv
+
+      - name: Executar Carga Histórica
+        env:
+          SAIPOS_TOKEN: ${{ secrets.SAIPOS_TOKEN }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        # Substitua pelo nome exato do arquivo que você criou
+        run: python carga_historica_itens.py
