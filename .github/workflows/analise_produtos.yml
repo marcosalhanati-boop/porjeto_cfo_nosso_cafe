@@ -1,0 +1,22 @@
+name: Análise de Mix de Produtos
+on:
+  schedule:
+    - cron: '30 9 * * *' # Roda 30 min depois do financeiro (06:30 Brasília)
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+      - name: Install deps
+        run: pip install requests psycopg2-binary python-dotenv
+      - name: Run Item Sync
+        env:
+          SAIPOS_TOKEN: ${{ secrets.SAIPOS_TOKEN }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: python analise_produtos.py
