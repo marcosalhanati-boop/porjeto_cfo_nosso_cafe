@@ -141,16 +141,37 @@ def job_completo():
     cur.execute("SELECT SUM(valor_total) FROM vendas WHERE date_trunc('month', data_venda) = date_trunc('month', %s::date)", (ontem_str,))
     acumulado_mes = float(cur.fetchone()[0] or 0)
 
-    # 3. Análise IA
+    # --- 3. Análise IA com Loop de Versões ---
     relatorio_ia = ""
-    prompt = f"CFO Nosso Café. Analise {ontem_str} ({nome_dia}): Venda R${venda_dia:.2f}, Meta R${meta_hoje:.2f}. Acumulado R${acumulado_mes:.2f}. Seja direto."
+    prompt = f"Aja como CFO do 'Nosso Café'. Analise o dia {ontem_str} ({nome_dia}): Venda R${venda_dia:.2f}, Meta R${meta_hoje:.2f}. Acumulado do mês R${acumulado_mes:.2f}. Seja direto, executivo e destaque se batemos a meta."
     
+    # Lista de modelos para testar, do mais novo para o mais estável
+    modelos_para_testar = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-8b']
+
+    print("Iniciando tentativa de conexão com Gemini...")
     try:
         client = genai.Client(api_key=GEMINI_KEY.strip())
-        response = client.models.generate_content(model='gemini-2.0-flash', contents=prompt)
-        relatorio_ia = response.text
-    except:
-        relatorio_ia = f"Venda: R${venda_dia:.2f} | Meta: R${meta_hoje:.2f}"
+        
+        for modelo in modelos_para_testar:
+            try:
+                print(f"Testando modelo: {modelo}...")
+                response = client.models.generate_content(model=modelo, contents=prompt)
+                
+                if response and response.text:
+                    relatorio_ia = response.text
+                    print(f"Sucesso com o modelo: {modelo}")
+                    break # Sai do loop assim que conseguir uma resposta
+            except Exception as e_modelo:
+                print(f"Modelo {modelo} falhou: {e_modelo}")
+                continue # Tenta o próximo da lista
+                
+    except Exception as e_client:
+        print(f"Erro ao inicializar cliente Gemini: {e_client}")
+
+    # Fallback caso todos os modelos falhem
+    if not relatorio_ia:
+        print("Todos os modelos de IA falharam. Usando resumo técnico.")
+        relatorio_ia = f"Venda: R${venda_dia:.2f} | Meta: R${meta_hoje:.2f}\nAcumulado Mês: R${acumulado_mes:.2f}"
 
     # 4. Montagem Final (Texto Puro)
     corpo_final = f"""☕ RELATÓRIO DIÁRIO - NOSSO CAFÉ
