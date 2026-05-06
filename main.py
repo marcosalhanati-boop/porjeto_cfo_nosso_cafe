@@ -141,21 +141,29 @@ def job_completo():
     cur.execute("SELECT SUM(valor_total) FROM vendas WHERE date_trunc('month', data_venda) = date_trunc('month', %s::date)", (ontem_str,))
     acumulado_mes = float(cur.fetchone()[0] or 0)
 
-    # --- 3. Análise IA - Versão Estável ---
+    # --- 3. Análise IA - Versão Estável Corrigida ---
     relatorio_ia = ""
-    print("Iniciando conexão com a API estável do Gemini...")
+    
+    # 3.1 Definir o texto que a IA vai ler (O PROMPT PRECISA ESTAR AQUI)
+    prompt_texto = (
+        f"Aja como CFO do 'Nosso Café'. Analise o dia {ontem_str} ({nome_dia}): "
+        f"Venda R${venda_dia:.2f}, Meta R${meta_hoje:.2f}. "
+        f"Acumulado do mês R${acumulado_mes:.2f}. "
+        f"Seja direto, executivo e destaque se batemos a meta."
+    )
+
+    print("Iniciando conexão com a API do Gemini...")
     
     try:
         genai.configure(api_key=GEMINI_KEY.strip())
-        
-        # Testamos os nomes curtos, que o SDK clássico resolve automaticamente
         modelos_estaveis = ['gemini-1.5-flash', 'gemini-1.5-pro']
         
         for nome_modelo in modelos_estaveis:
             try:
-                print(f"Tentando modelo estável: {nome_modelo}")
+                print(f"Tentando modelo: {nome_modelo}")
                 model = genai.GenerativeModel(nome_modelo)
-                response = model.generate_content(prompt)
+                # Passando a variável correta: prompt_texto
+                response = model.generate_content(prompt_texto)
                 
                 if response.text:
                     relatorio_ia = response.text
@@ -167,37 +175,6 @@ def job_completo():
 
     except Exception as e_geral_ia:
         print(f"Erro geral na IA: {e_geral_ia}")
-
-    if not relatorio_ia:
-        relatorio_ia = f"Venda: R${venda_dia:.2f} | Meta: R${meta_hoje:.2f}"# --- 3. Análise IA - Versão Estável ---
-    relatorio_ia = ""
-    print("Iniciando conexão com a API estável do Gemini...")
-    
-    try:
-        genai.configure(api_key=GEMINI_KEY.strip())
-        
-        # Testamos os nomes curtos, que o SDK clássico resolve automaticamente
-        modelos_estaveis = ['gemini-1.5-flash', 'gemini-1.5-pro']
-        
-        for nome_modelo in modelos_estaveis:
-            try:
-                print(f"Tentando modelo estável: {nome_modelo}")
-                model = genai.GenerativeModel(nome_modelo)
-                response = model.generate_content(prompt)
-                
-                if response.text:
-                    relatorio_ia = response.text
-                    print(f"Sucesso com {nome_modelo}!")
-                    break
-            except Exception as e_mod:
-                print(f"Erro no modelo {nome_modelo}: {e_mod}")
-                continue
-
-    except Exception as e_geral_ia:
-        print(f"Erro geral na IA: {e_geral_ia}")
-
-    if not relatorio_ia:
-        relatorio_ia = f"Venda: R${venda_dia:.2f} | Meta: R${meta_hoje:.2f}"
 
     # Fallback caso todos os modelos falhem
     if not relatorio_ia:
