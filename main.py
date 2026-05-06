@@ -44,6 +44,38 @@ def enviar_email(assunto, corpo):
     except Exception as e:
         print(f"Erro e-mail: {e}")
 
+def obter_comparativo_mtd(cursor):
+    ontem = datetime.now() - timedelta(days=1)
+    dia_fechamento = ontem.day
+    
+    # Cálculos de datas para os 3 meses
+    inicio_atual = ontem.replace(day=1).strftime('%Y-%m-%d')
+    fim_atual = ontem.strftime('%Y-%m-%d')
+    
+    mes_anterior_dt = (ontem.replace(day=1) - timedelta(days=1))
+    inicio_ant = mes_anterior_dt.replace(day=1).strftime('%Y-%m-%d')
+    fim_ant = mes_anterior_dt.replace(day=dia_fechamento).strftime('%Y-%m-%d')
+    
+    mes_retrasado_dt = (mes_anterior_dt.replace(day=1) - timedelta(days=1))
+    inicio_retr = mes_retrasado_dt.replace(day=1).strftime('%Y-%m-%d')
+    fim_retr = mes_retrasado_dt.replace(day=dia_fechamento).strftime('%Y-%m-%d')
+
+    def buscar_total(ini, fim):
+        cursor.execute("SELECT SUM(valor_total) FROM vendas WHERE data_venda >= %s AND data_venda <= %s", (ini, fim))
+        res = cursor.fetchone()[0]
+        return float(res) if res else 0.0
+
+    t_atual = buscar_total(inicio_atual, fim_atual)
+    t_ant = buscar_total(inicio_ant, fim_ant)
+    t_retr = buscar_total(inicio_retr, fim_retr)
+
+    def calc_var(atual, base):
+        return ((atual - base) / base * 100) if base > 0 else 0
+
+    v_ant, v_retr = calc_var(t_atual, t_ant), calc_var(t_atual, t_retr)
+    s_ant = "🟢 ↑" if v_ant >= 0 else "🔴 ↓"
+    s_retr = "🟢 ↑" if v_retr >= 0 else "🔴 ↓"
+
 def calcular_meta_dinamica(cursor, data_analise):
     """
     Calcula a meta baseada na média dos últimos 3 meses para o mesmo dia da semana,
@@ -127,10 +159,13 @@ def job_completo():
     media_diaria_mes = acumulado_mes / dia_atual
     ultimo_dia = calendar.monthrange(ontem_dt.year, ontem_dt.month)[1]
     projecao_final = media_diaria_mes * ultimo_dia
+
+    # Busca o comparativo MTD
+    bloco_comparativo_html = obter_comparativo_mtd(cur)
     
     # --- 4. ANÁLISE IA PARA GESTÃO (Marcela e Natali) ---
     texto_prompt = f"""
-    Aja como CFO do 'Nosso Café'. O relatório é para as gestoras Marcela e Natali.
+    Aja como Diretor financeiro do 'Nosso Café'. O relatório é para as gestoras Marcela e Natali.
     Analise os resultados de {ontem_str} ({nome_dia}):
     
     - VENDA REAL: R${venda_dia:.2f}
@@ -140,6 +175,7 @@ def job_completo():
     
     - ACUMULADO MÊS: R${acumulado_mes:.2f}
     - PROJEÇÃO FINAL: R${projecao_final:.2f}
+    - COMPARATIVO: bloco_comparativo_html
 
     Diretrizes:
     1. Foque em análise financeira e estratégica.
