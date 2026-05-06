@@ -1,5 +1,5 @@
-requests
+google-generativeai
 psycopg2-binary
+requests
 python-dotenv
-google-genai
 holidays
