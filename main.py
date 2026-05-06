@@ -140,7 +140,7 @@ def job_completo():
     cur.execute("SELECT SUM(valor_total) FROM vendas WHERE date_trunc('month', data_venda) = date_trunc('month', %s::date)", (ontem_str,))
     acumulado_mes = float(cur.fetchone()[0] or 0)
 
-    # --- 3. Análise IA - Conexão Direta (REST API) ---
+    # --- 3. Análise IA - Conexão Direta Estável (v1) ---
     relatorio_ia = ""
     
     prompt_texto = (
@@ -150,37 +150,36 @@ def job_completo():
         f"Seja direto, executivo e destaque se batemos a meta."
     )
 
-    print("Iniciando conexão direta (REST) com a API do Gemini...")
+    print("Iniciando conexão direta (v1 Stable) com a API do Gemini...")
     
-    # Modelos universais que sempre respondem na rota principal
-    modelos_rest = ['gemini-1.5-flash', 'gemini-pro', 'gemini-1.0-pro']
+    # Tentando a rota estável (v1)
+    modelos_estaveis = ['gemini-1.5-flash', 'gemini-1.5-pro']
     
-    for modelo in modelos_rest:
+    for modelo in modelos_estaveis:
         try:
-            print(f"Tentando modelo: {modelo} via URL direta...")
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent?key={GEMINI_KEY.strip()}"
+            print(f"Tentando modelo: {modelo} via rota v1...")
+            # Mudamos de v1beta para v1 na URL abaixo:
+            url = f"https://generativelanguage.googleapis.com/v1/models/{modelo}:generateContent?key={GEMINI_KEY.strip()}"
             headers = {'Content-Type': 'application/json'}
             payload = {
                 "contents": [{"parts": [{"text": prompt_texto}]}]
             }
             
-            # Fazendo a requisição direta, igual fazemos com a Saipos
             response = requests.post(url, headers=headers, json=payload)
             
             if response.status_code == 200:
                 resultado = response.json()
                 relatorio_ia = resultado['candidates'][0]['content']['parts'][0]['text']
-                print(f"Sucesso absoluto com {modelo}!")
+                print(f"Sucesso com {modelo}!")
                 break
             else:
                 print(f"Erro {response.status_code} no {modelo}: {response.text}")
                 
         except Exception as e_req:
-            print(f"Falha na conexão com {modelo}: {e_req}")
+            print(f"Falha na conexão: {e_req}")
 
-    # Fallback caso dê erro de internet/chave
+    # Fallback caso a API ainda esteja de mau humor
     if not relatorio_ia:
-        print("Todas as tentativas falharam. Usando resumo técnico.")
         relatorio_ia = f"Venda: R${venda_dia:.2f} | Meta: R${meta_hoje:.2f}\nAcumulado Mês: R${acumulado_mes:.2f}"
    
     # 4. Montagem Final (Texto Puro)
