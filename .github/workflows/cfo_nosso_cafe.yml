@@ -26,11 +26,10 @@ jobs:
 
       - name: Rodar Script de Dados e Report
         env:
-          # Passando TODAS as chaves necessárias para o Python
           SAIPOS_TOKEN: ${{ secrets.SAIPOS_TOKEN }}
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PWD: ${{ secrets.GMAIL_APP_PWD }}
           DESTINATARIO: ${{ secrets.DESTINATARIO }}
-        run: python integracao_saipos.py
+        run: python main.py  # <--- Verifique se o nome aqui é 'main.py' ou 'integracao_saipos.py'
