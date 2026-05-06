@@ -141,29 +141,31 @@ def job_completo():
     cur.execute("SELECT SUM(valor_total) FROM vendas WHERE date_trunc('month', data_venda) = date_trunc('month', %s::date)", (ontem_str,))
     acumulado_mes = float(cur.fetchone()[0] or 0)
 
-    # --- 3. Análise IA com Loop de Versões ---
+    # --- 3. Análise IA com Ajuste de Nomenclatura ---
     relatorio_ia = ""
     prompt = f"Aja como CFO do 'Nosso Café'. Analise o dia {ontem_str} ({nome_dia}): Venda R${venda_dia:.2f}, Meta R${meta_hoje:.2f}. Acumulado do mês R${acumulado_mes:.2f}. Seja direto, executivo e destaque se batemos a meta."
     
-    # Lista de modelos para testar, do mais novo para o mais estável
-    modelos_para_testar = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-flash-8b']
+    # Adicionamos 'models/' antes para evitar o erro 404 de 'não encontrado'
+    modelos_para_testar = ['models/gemini-1.5-flash', 'models/gemini-1.5-flash-8b', 'models/gemini-1.0-pro']
 
     print("Iniciando tentativa de conexão com Gemini...")
     try:
+        # Importante: Garantir que o cliente use a versão estável da API
         client = genai.Client(api_key=GEMINI_KEY.strip())
         
         for modelo in modelos_para_testar:
             try:
                 print(f"Testando modelo: {modelo}...")
+                # No SDK novo, às vezes passar o nome direto funciona melhor
                 response = client.models.generate_content(model=modelo, contents=prompt)
                 
                 if response and response.text:
                     relatorio_ia = response.text
                     print(f"Sucesso com o modelo: {modelo}")
-                    break # Sai do loop assim que conseguir uma resposta
+                    break
             except Exception as e_modelo:
                 print(f"Modelo {modelo} falhou: {e_modelo}")
-                continue # Tenta o próximo da lista
+                continue
                 
     except Exception as e_client:
         print(f"Erro ao inicializar cliente Gemini: {e_client}")
