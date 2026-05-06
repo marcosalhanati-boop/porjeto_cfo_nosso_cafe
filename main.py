@@ -8,7 +8,6 @@ from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
-import google.generativeai as genai  # Mudamos de .genai para .generativeai
 
 load_dotenv()
 
@@ -141,10 +140,9 @@ def job_completo():
     cur.execute("SELECT SUM(valor_total) FROM vendas WHERE date_trunc('month', data_venda) = date_trunc('month', %s::date)", (ontem_str,))
     acumulado_mes = float(cur.fetchone()[0] or 0)
 
-    # --- 3. Análise IA - Versão Estável Corrigida ---
+    # --- 3. Análise IA - Conexão Direta (REST API) ---
     relatorio_ia = ""
     
-    # 3.1 Definir o texto que a IA vai ler (O PROMPT PRECISA ESTAR AQUI)
     prompt_texto = (
         f"Aja como CFO do 'Nosso Café'. Analise o dia {ontem_str} ({nome_dia}): "
         f"Venda R${venda_dia:.2f}, Meta R${meta_hoje:.2f}. "
@@ -152,35 +150,39 @@ def job_completo():
         f"Seja direto, executivo e destaque se batemos a meta."
     )
 
-    print("Iniciando conexão com a API do Gemini...")
+    print("Iniciando conexão direta (REST) com a API do Gemini...")
     
-    try:
-        genai.configure(api_key=GEMINI_KEY.strip())
-        modelos_estaveis = ['gemini-1.5-flash', 'gemini-1.5-pro']
-        
-        for nome_modelo in modelos_estaveis:
-            try:
-                print(f"Tentando modelo: {nome_modelo}")
-                model = genai.GenerativeModel(nome_modelo)
-                # Passando a variável correta: prompt_texto
-                response = model.generate_content(prompt_texto)
+    # Modelos universais que sempre respondem na rota principal
+    modelos_rest = ['gemini-1.5-flash', 'gemini-pro', 'gemini-1.0-pro']
+    
+    for modelo in modelos_rest:
+        try:
+            print(f"Tentando modelo: {modelo} via URL direta...")
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent?key={GEMINI_KEY.strip()}"
+            headers = {'Content-Type': 'application/json'}
+            payload = {
+                "contents": [{"parts": [{"text": prompt_texto}]}]
+            }
+            
+            # Fazendo a requisição direta, igual fazemos com a Saipos
+            response = requests.post(url, headers=headers, json=payload)
+            
+            if response.status_code == 200:
+                resultado = response.json()
+                relatorio_ia = resultado['candidates'][0]['content']['parts'][0]['text']
+                print(f"Sucesso absoluto com {modelo}!")
+                break
+            else:
+                print(f"Erro {response.status_code} no {modelo}: {response.text}")
                 
-                if response.text:
-                    relatorio_ia = response.text
-                    print(f"Sucesso com {nome_modelo}!")
-                    break
-            except Exception as e_mod:
-                print(f"Erro no modelo {nome_modelo}: {e_mod}")
-                continue
+        except Exception as e_req:
+            print(f"Falha na conexão com {modelo}: {e_req}")
 
-    except Exception as e_geral_ia:
-        print(f"Erro geral na IA: {e_geral_ia}")
-
-    # Fallback caso todos os modelos falhem
+    # Fallback caso dê erro de internet/chave
     if not relatorio_ia:
-        print("Todos os modelos de IA falharam. Usando resumo técnico.")
+        print("Todas as tentativas falharam. Usando resumo técnico.")
         relatorio_ia = f"Venda: R${venda_dia:.2f} | Meta: R${meta_hoje:.2f}\nAcumulado Mês: R${acumulado_mes:.2f}"
-
+   
     # 4. Montagem Final (Texto Puro)
     corpo_final = f"""☕ RELATÓRIO DIÁRIO - NOSSO CAFÉ
 Dados de: {ontem_str} ({nome_dia})
