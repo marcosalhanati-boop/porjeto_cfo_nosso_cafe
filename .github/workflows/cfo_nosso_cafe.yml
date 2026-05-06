@@ -19,6 +19,10 @@ jobs:
         with:
           python-version: '3.10'
 
+      - name: Install dependencies
+        run: |
+          pip install google-generativeai psycopg2-binary requests python-dotenv holidays
+
       - name: Instalar bibliotecas necessarias
         run: |
           pip install -r requirements.txt
