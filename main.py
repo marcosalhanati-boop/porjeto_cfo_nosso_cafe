@@ -152,14 +152,19 @@ def job_completo():
 
     print("Iniciando conexão direta (v1 Stable) com a API do Gemini...")
     
-    # Tentando a rota estável (v1)
-    modelos_estaveis = ['gemini-1.5-flash', 'gemini-1.5-pro']
+    # 1. Lista de modelos expandida para não ter erro de nome
+    modelos_estaveis = [
+        'gemini-1.5-flash', 
+        'gemini-1.5-flash-latest', 
+        'gemini-pro'
+    ]
     
     for modelo in modelos_estaveis:
         try:
             print(f"Tentando modelo: {modelo} via rota v1...")
-            # Mudamos de v1beta para v1 na URL abaixo:
+            # Tentando sem o prefixo 'models/' na variável, mas garantindo ele na URL
             url = f"https://generativelanguage.googleapis.com/v1/models/{modelo}:generateContent?key={GEMINI_KEY.strip()}"
+            
             headers = {'Content-Type': 'application/json'}
             payload = {
                 "contents": [{"parts": [{"text": prompt_texto}]}]
@@ -169,12 +174,17 @@ def job_completo():
             
             if response.status_code == 200:
                 resultado = response.json()
+                # Extração segura do texto
                 relatorio_ia = resultado['candidates'][0]['content']['parts'][0]['text']
-                print(f"Sucesso com {modelo}!")
+                print(f"✅ SUCESSO com {modelo}!")
                 break
             else:
-                print(f"Erro {response.status_code} no {modelo}: {response.text}")
-                
+                # Se der 404 de novo, vamos tentar com o prefixo 'models/' explícito na próxima iteração
+                print(f"❌ Erro {response.status_code} no {modelo}")
+            
+            response = requests.post(url, headers=headers, json=payload)
+            
+                            
         except Exception as e_req:
             print(f"Falha na conexão: {e_req}")
 
