@@ -93,23 +93,25 @@ def extrair_forma_pagamento(venda):
     return pagamentos[0].get('payment_method_name', 'Outros')
 
 def enviar_email(assunto, corpo_html):
-    if not DESTINATARIOS_RAW: return
+    if not DESTINATARIOS_RAW: 
+        print("Erro: Variável DESTINATARIO não configurada.")
+        return
+    
     lista_emails = [e.strip() for e in DESTINATARIOS_RAW.split(',')]
     msg = MIMEMultipart()
     msg['From'] = GMAIL_USER
     msg['To'] = ", ".join(lista_emails)
     msg['Subject'] = assunto
-    
-    # MUDANÇA: Agora enviamos como HTML
     msg.attach(MIMEText(corpo_html, 'html'))
-    
+
     try:
-        with smtplib.SMTP('smtp.gmail.com', 587) as server:
-            server.starttls()
+        # Usando a porta 465 (SSL) que é mais estável no GitHub Actions
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
             server.login(GMAIL_USER, GMAIL_APP_PWD)
-            server.sendmail(GMAIL_USER, lista_emails, msg.as_string())
+            server.send_message(msg)
+            print("E-mail enviado com sucesso!")
     except Exception as e:
-        print(f"Erro e-mail: {e}")
+        print(f"Erro fatal ao enviar e-mail: {e}")
 
 def calcular_meta_dinamica(cursor, data_analise):
     br_holidays = holidays.Brazil()
