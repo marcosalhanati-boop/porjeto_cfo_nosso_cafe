@@ -76,6 +76,14 @@ def obter_comparativo_mtd(cursor):
     s_ant = "🟢 ↑" if v_ant >= 0 else "🔴 ↓"
     s_retr = "🟢 ↑" if v_retr >= 0 else "🔴 ↓"
 
+    # MUDANÇA AQUI: Criar a string de retorno
+    texto_comparativo = (
+        f"Mês Atual (até dia {ontem.day}): R${t_atual:.2f}\n"
+        f"Mês Anterior (mesmo período): R${t_ant:.2f} ({s_ant} {v_ant:.1f}%)\n"
+        f"Mês Retrasado (mesmo período): R${t_retr:.2f} ({s_retr} {v_retr:.1f}%)"
+    )
+    return texto_comparativo # Importante!
+
 def calcular_meta_dinamica(cursor, data_analise):
     """
     Calcula a meta baseada na média dos últimos 3 meses para o mesmo dia da semana,
@@ -175,7 +183,8 @@ def job_completo():
     
     - ACUMULADO MÊS: R${acumulado_mes:.2f}
     - PROJEÇÃO FINAL: R${projecao_final:.2f}
-    - COMPARATIVO: bloco_comparativo_html
+    - COMPARATIVO DE PERÍODOS ANTERIORES:
+    {bloco_comparativo_html}  <-- Agora a variável será inserida aqui
 
     Diretrizes:
     1. Foque em análise financeira e estratégica.
@@ -233,7 +242,7 @@ def job_completo():
 🚀 **NOSSO CAFÉ - RELATÓRIO DE VENDAS**
 
 Ontem ({nome_dia}): R${venda_dia:.2f}
-Meta: R${meta:.2f} (Superávit: R${venda_dia - meta:.2f})
+Meta: R${meta_hoje:.2f} (Superávit: R${venda_dia - meta_hoje:.2f})
 
 📊 **INDICADORES MENSAIS**
 Acumulado: R${acumulado_mes:.2f}
