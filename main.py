@@ -162,6 +162,10 @@ def job_completo():
     cur.execute("SELECT SUM(valor_total) FROM vendas WHERE date_trunc('month', data_venda) = date_trunc('month', %s::date)", (ontem_str,))
     acumulado_mes = float(cur.fetchone()[0] or 0)
 
+    # Acumulado do Ano (YTD)
+    cur.execute("SELECT SUM(valor_total) FROM vendas WHERE date_trunc('year', data_venda) = date_trunc('year', %s::date)", (ontem_str,))
+    acumulado_ano = float(cur.fetchone()[0] or 0)
+
     # Projeção
     dia_atual = ontem_dt.day
     media_diaria_mes = acumulado_mes / dia_atual
@@ -182,6 +186,7 @@ def job_completo():
     - SUPERÁVIT/DÉFICIT: R${venda_dia - meta_hoje:.2f}
     
     - ACUMULADO MÊS: R${acumulado_mes:.2f}
+    - ACUMULADO ANO: R${acumulado_ano:.2f}
     - PROJEÇÃO FINAL: R${projecao_final:.2f}
     - COMPARATIVO DE PERÍODOS ANTERIORES:
     {bloco_comparativo_html}  <-- Agora a variável será inserida aqui
@@ -189,8 +194,9 @@ def job_completo():
     Diretrizes:
     1. Foque em análise financeira e estratégica.
     2. Comente se a projeção de R${projecao_final:.2f} atende às expectativas de crescimento.
-    3. Mencione a equipe brevemente apenas se o resultado for excepcional.
-    4. Seja direto, executivo e profissional.
+    3. Informe o R${acumulado_ano:.2f} e seu crescimento.
+    4. Mencione a equipe brevemente apenas se o resultado for excepcional.
+    5. Seja direto, executivo e profissional.
     """
     
     # ... (segue o código do loop de modelos da IA que já está funcionando) ...
@@ -246,6 +252,7 @@ Meta: R${meta_hoje:.2f} (Superávit: R${venda_dia - meta_hoje:.2f})
 
 📊 **INDICADORES MENSAIS**
 Acumulado: R${acumulado_mes:.2f}
+Acumulado Ano: R${acumulado_ano:.2f}
 Média Diária: R${media_diaria_mes:.2f}
 Projeção Final: R${projecao_final:.2f}
 
