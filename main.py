@@ -44,21 +44,30 @@ def enviar_email(assunto, corpo):
     except Exception as e:
         print(f"Erro e-mail: {e}")
 
-def obter_comparativo_mtd(cursor):
+def obter_comparativo_mtd_texto(cursor):
     ontem = datetime.now() - timedelta(days=1)
     dia_fechamento = ontem.day
     
-    # Cálculos de datas para os 3 meses
+    # 1. Datas do Mês Atual
     inicio_atual = ontem.replace(day=1).strftime('%Y-%m-%d')
     fim_atual = ontem.strftime('%Y-%m-%d')
     
+    # 2. Datas do Mês Anterior (Blindado contra meses com menos dias)
     mes_anterior_dt = (ontem.replace(day=1) - timedelta(days=1))
-    inicio_ant = mes_anterior_dt.replace(day=1).strftime('%Y-%m-%d')
-    fim_ant = mes_anterior_dt.replace(day=dia_fechamento).strftime('%Y-%m-%d')
+    # Encontra o último dia do mês anterior (ex: se dia_fechamento for 31, mas abril só tem 30, limita a 30)
+    ultimo_dia_mes_ant = calendar.monthrange(mes_anterior_dt.year, mes_anterior_dt.month)[1]
+    dia_fim_ant = min(dia_fechamento, ultimo_dia_mes_ant)
     
+    inicio_ant = mes_anterior_dt.replace(day=1).strftime('%Y-%m-%d')
+    fim_ant = mes_anterior_dt.replace(day=dia_fim_ant).strftime('%Y-%m-%d')
+    
+    # 3. Datas do Mês Retrasado (Também blindado)
     mes_retrasado_dt = (mes_anterior_dt.replace(day=1) - timedelta(days=1))
+    ultimo_dia_mes_retr = calendar.monthrange(mes_retrasado_dt.year, mes_retrasado_dt.month)[1]
+    dia_fim_retr = min(dia_fechamento, ultimo_dia_mes_retr)
+    
     inicio_retr = mes_retrasado_dt.replace(day=1).strftime('%Y-%m-%d')
-    fim_retr = mes_retrasado_dt.replace(day=dia_fechamento).strftime('%Y-%m-%d')
+    fim_retr = mes_retrasado_dt.replace(day=dia_fim_retr).strftime('%Y-%m-%d')
 
     def buscar_total(ini, fim):
         cursor.execute("SELECT SUM(valor_total) FROM vendas WHERE data_venda >= %s AND data_venda <= %s", (ini, fim))
@@ -72,17 +81,17 @@ def obter_comparativo_mtd(cursor):
     def calc_var(atual, base):
         return ((atual - base) / base * 100) if base > 0 else 0
 
-    v_ant, v_retr = calc_var(t_atual, t_ant), calc_var(t_atual, t_retr)
-    s_ant = "🟢 ↑" if v_ant >= 0 else "🔴 ↓"
-    s_retr = "🟢 ↑" if v_retr >= 0 else "🔴 ↓"
-
-    # MUDANÇA AQUI: Criar a string de retorno
-    texto_comparativo = (
-        f"Mês Atual (até dia {ontem.day}): R${t_atual:.2f}\n"
-        f"Mês Anterior (mesmo período): R${t_ant:.2f} ({s_ant} {v_ant:.1f}%)\n"
-        f"Mês Retrasado (mesmo período): R${t_retr:.2f} ({s_retr} {v_retr:.1f}%)"
-    )
-    return texto_comparativo # Importante!
+    v_ant = calc_var(t_atual, t_ant)
+    v_retr = calc_var(t_atual, t_retr)
+    
+    # Formatação em texto puro
+    texto = f"📈 COMPARATIVO MTD (Acumulado até dia {dia_fechamento})\n"
+    texto += f"------------------------------------------\n"
+    texto += f"ESTE MÊS ({ontem.strftime('%b/%y')}): R$ {t_atual:,.2f}\n"
+    texto += f"MÊS ANTERIOR ({mes_anterior_dt.strftime('%b/%y')}): R$ {t_ant:,.2f} ({v_ant:+.1f}% {'🟢 ↑' if v_ant >=0 else '🔴 ↓'})\n"
+    texto += f"MÊS RETRASADO ({mes_retrasado_dt.strftime('%b/%y')}): R$ {t_retr:,.2f} ({v_retr:+.1f}% {'🟢 ↑' if v_retr >=0 else '🔴 ↓'})\n"
+    texto += f"------------------------------------------\n"
+    return texto
 
 def calcular_meta_dinamica(cursor, data_analise):
     """
