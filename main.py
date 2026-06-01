@@ -182,7 +182,7 @@ def job_completo():
     projecao_final = media_diaria_mes * ultimo_dia
 
     # Busca o comparativo MTD
-    bloco_comparativo_html = obter_comparativo_mtd(cur)
+    bloco_comparativo_html = obter_comparativo_mtd_texto(cur)
     
     # --- 4. ANÁLISE IA PARA GESTÃO (Marcela e Natali) ---
     texto_prompt = f"""
