@@ -1,0 +1,36 @@
+name: Relatorio Semanal de Mix
+
+on:
+  schedule:
+    # Corre todas as segundas-feiras às 09:00 UTC (06:00 horário de Brasília)
+    - cron: '0 9 * * 1'
+  workflow_dispatch: # Permite que clique no botão e execute manualmente se quiser testar antes
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true' # Proteção do Node 24 que o GitHub pediu!
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Weekly Report
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PWD: ${{ secrets.GMAIL_APP_PWD }}
+          DESTINATARIO: ${{ secrets.DESTINATARIO }}
+        run: python report_semanal.py
