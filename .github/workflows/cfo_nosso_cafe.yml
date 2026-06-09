@@ -1,5 +1,8 @@
 name: Relatorio Diario CFO Nosso Cafe
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 on:
   schedule:
     # 11:00 UTC é 08:00 no Horário de Brasília
