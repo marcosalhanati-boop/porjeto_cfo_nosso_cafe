@@ -9,7 +9,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
 
-# MUDANÇA AQUI: Importação direta do novo SDK
+# Novo SDK oficial do Google
 import google.genai as genai
 
 load_dotenv()
@@ -41,6 +41,7 @@ def enviar_email(assunto, corpo):
             server.starttls()
             server.login(GMAIL_USER, GMAIL_APP_PWD)
             server.sendmail(GMAIL_USER, lista_emails, msg.as_string())
+            print("E-mail enviado!")
     except Exception as e:
         print(f"Erro e-mail: {e}")
 
@@ -48,13 +49,12 @@ def obter_comparativo_mtd_texto(cursor):
     ontem = datetime.now() - timedelta(days=1)
     dia_fechamento = ontem.day
     
-    # 1. Datas do Mês Atual
+    # 1. Dates do Mês Atual
     inicio_atual = ontem.replace(day=1).strftime('%Y-%m-%d')
     fim_atual = ontem.strftime('%Y-%m-%d')
     
     # 2. Datas do Mês Anterior (Blindado contra meses com menos dias)
     mes_anterior_dt = (ontem.replace(day=1) - timedelta(days=1))
-    # Encontra o último dia do mês anterior (ex: se dia_fechamento for 31, mas abril só tem 30, limita a 30)
     ultimo_dia_mes_ant = calendar.monthrange(mes_anterior_dt.year, mes_anterior_dt.month)[1]
     dia_fim_ant = min(dia_fechamento, ultimo_dia_mes_ant)
     
@@ -94,15 +94,10 @@ def obter_comparativo_mtd_texto(cursor):
     return texto
 
 def calcular_meta_dinamica(cursor, data_analise):
-    """
-    Calcula a meta baseada na média dos últimos 3 meses para o mesmo dia da semana,
-    aplicando um crescimento de 2.5%.
-    """
     br_holidays = holidays.Brazil()
     is_feriado_fds = data_analise.weekday() >= 5 or data_analise in br_holidays
     dia_semana = data_analise.weekday()
     
-    # Busca a média do mesmo dia da semana nos últimos 90 dias
     query = """
         SELECT AVG(total_dia) FROM (
             SELECT data_venda::date, SUM(valor_total) as total_dia
@@ -117,10 +112,7 @@ def calcular_meta_dinamica(cursor, data_analise):
     cursor.execute(query, (data_analise, data_analise, dia_semana))
     resultado = cursor.fetchone()[0]
     
-    # Se não houver histórico suficiente, usa um fallback seguro
     media_historica = float(resultado) if resultado else (1800.0 if is_feriado_fds else 1200.0)
-    
-    # Aplica crescimento de 2.5%
     meta_sugerida = media_historica * 1.025
     return round(meta_sugerida, 2)
 
@@ -132,7 +124,7 @@ def job_completo():
     nome_dia = dia_semana_pt[ontem_dt.weekday()]
     print(f"--- Iniciando Processamento: {ontem_str} ({nome_dia}) ---")
 
-    # --- 2. SYNC SAIPOS -> SUPABASE (Com Forma de Pagamento) ---
+    # --- 2. SYNC SAIPOS -> SUPABASE ---
     url = "https://data.saipos.io/v1/search_sales_v3"
     headers = {"Authorization": f"Bearer {SAIPOS_TOKEN}", "Accept": "application/json"}
     params = {
@@ -141,9 +133,7 @@ def job_completo():
         "p_filter_date_end": f"{ontem_str}T23:59:59"
     }
     
-    # ESTA É A LINHA QUE ESTAVA FALTANDO:
     r = requests.get(url, headers=headers, params=params)
-    
     vendas = r.json() if r.status_code == 200 else []
     
     conn = psycopg2.connect(DB_URL)
@@ -159,7 +149,8 @@ def job_completo():
                     forma_pagamento = EXCLUDED.forma_pagamento;
             """, (v.get('id_sale'), v.get('created_at'), v.get('total_amount'), forma))
         conn.commit()
-    # --- 3. MÉTRICAS E NOVA META ---
+
+    # --- 3. MÉTRICAS ---
     cur = conn.cursor()
     meta_hoje = calcular_meta_dinamica(cur, ontem_dt.date())
     
@@ -181,10 +172,10 @@ def job_completo():
     ultimo_dia = calendar.monthrange(ontem_dt.year, ontem_dt.month)[1]
     projecao_final = media_diaria_mes * ultimo_dia
 
-    # Busca o comparativo MTD
+    # Chamada corrigida da função MTD
     bloco_comparativo_html = obter_comparativo_mtd_texto(cur)
     
-    # --- 4. ANÁLISE IA PARA GESTÃO (Marcela e Natali) ---
+    # --- 4. CONFIGURAÇÃO DO PROMPT ---
     texto_prompt = f"""
     Aja como Diretor financeiro do 'Nosso Café'. O relatório é para as gestoras Marcela e Natali.
     Analise os resultados de {ontem_str} ({nome_dia}):
@@ -198,7 +189,7 @@ def job_completo():
     - ACUMULADO ANO: R${acumulado_ano:.2f}
     - PROJEÇÃO FINAL: R${projecao_final:.2f}
     - COMPARATIVO DE PERÍODOS ANTERIORES:
-    {bloco_comparativo_html}  <-- Agora a variável será inserida aqui
+    {bloco_comparativo_html}
 
     Diretrizes:
     1. Foque em análise financeira e estratégica.
@@ -208,31 +199,28 @@ def job_completo():
     5. Seja direto, executivo e profissional.
     """
     
-    # ... (segue o código do loop de modelos da IA que já está funcionando) ...
-
-    # --- 4. ANÁLISE COM GEMINI (PROTOCOLO DE TENTATIVA SIMPLIFICADO) ---
+    # --- 5. EXECUÇÃO DA IA (NOVO SDK GOOGLE-GENAI) ---
     relatorio_ia = ""
     try:
         client = genai.Client(api_key=GEMINI_KEY.strip())
         
-        # 1. Busca os nomes de todos os modelos disponíveis sem filtrar por atributos
-        # Em 2026, isso retorna uma lista de objetos onde o .name é o ID que precisamos
+        # Filtra os modelos disponíveis na conta
         modelos_disponiveis = [m.name for m in client.models.list()]
         print(f"Modelos encontrados na conta: {modelos_disponiveis}")
 
-        # 2. Ordem de preferência (nossos "favoritos")
-        preferencia = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-3-flash']
+        preferencia = ['gemini-2.0-flash', 'gemini-1.5-flash']
         
-        # Reorganiza a fila: coloca os preferidos na frente, o resto depois
         fila_tentativa = []
         for p in preferencia:
             for m in modelos_disponiveis:
-                if p in m: fila_tentativa.append(m)
+                if p in m and m not in fila_tentativa: 
+                    fila_tentativa.append(m)
         
         for m in modelos_disponiveis:
-            if m not in fila_tentativa: fila_tentativa.append(m)
+            if m not in fila_tentativa: 
+                fila_tentativa.append(m)
 
-        # 3. Loop de execução
+        # Loop estruturado de chamadas
         for modelo_teste in fila_tentativa:
             try:
                 print(f"Tentando: {modelo_teste}...")
@@ -251,7 +239,7 @@ def job_completo():
     except Exception as e_critico:
         print(f"Erro ao acessar API do Google: {e_critico}")
 
-    # --- 4.1 FALLBACK FORMATADO (Mantido para segurança) ---
+    # --- 6. FALLBACK DE SEGURANÇA ---
     if not relatorio_ia:
         relatorio_ia = f"""
 🚀 **NOSSO CAFÉ - RELATÓRIO DE VENDAS**
@@ -267,8 +255,23 @@ Projeção Final: R${projecao_final:.2f}
 
 Nota: O sistema de IA (CFO) está em manutenção, mas os números acima são oficiais.
 """
+    
+    # Montagem final do corpo do e-mail em texto puro
+    corpo_final = f"""☕ RELATÓRIO DIÁRIO - NOSSO CAFÉ
+Dados de: {ontem_str} ({nome_dia})
+
+{bloco_comparativo_html}
+
+📊 ANÁLISE DO CFO:
+{relatorio_ia}
+
+---
+Gerado automaticamente.
+"""
         
-    enviar_email(f"Relatório Diário Nosso Café - {ontem_str}", relatorio_ia)
+    enviar_email(f"Relatório Diário Nosso Café - {ontem_str}", corpo_final)
+    cur.close()
+    conn.close()
 
 if __name__ == "__main__":
     job_completo()
