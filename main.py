@@ -404,9 +404,32 @@ def job_completo():
         4. Seja direto, executivo e profissional.
         """
 
-        relatorio_ia = gerar_relatorio_ia(texto_prompt)
-        if not relatorio_ia:
-            relatorio_ia = "O sistema de análise estratégica automática da IA está indisponível temporariamente, mas os dados abaixo foram calculados com sucesso."
+        def gerar_relatorio_ia(texto_prompt):
+    """ Tenta gerar o relatório com a versão mais recente dos modelos Gemini no novo SDK. """
+    try:
+        # Passa a chave explicitamente para evitar fallbacks incorretos
+        client = genai.Client(api_key=GEMINI_KEY.strip())
+    except Exception as e_critico:
+        print(f"Erro ao inicializar client do Google Gemini: {e_critico}")
+        return ""
+
+    # Lista atualizada de modelos para o SDK google-genai
+    modelos_atuais = ['gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.5-flash-lite']
+
+    for modelo in modelos_atuais:
+        try:
+            print(f"Tentando: {modelo}...")
+            # Desativa AFC explicitamente se não houver ferramentas/funções passadas no prompt
+            response = client.models.generate_content(
+                model=modelo,
+                contents=texto_prompt
+            )
+            if response and response.text:
+                print(f"Sucesso com: {modelo}!")
+                return response.text
+        except Exception as e_mod:
+            print(f"Modelo {modelo} recusou: {e_mod}")
+            continue
 
         bloco_comparativo_html = bloco_comparativo_texto.replace('\n', '<br>')
         relatorio_ia_html = relatorio_ia.replace('\n', '<br>')
