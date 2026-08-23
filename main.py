@@ -30,7 +30,7 @@ DESTINATARIOS_RAW = os.getenv("DESTINATARIO", "")
 
 TZ_BR = ZoneInfo("America/Sao_Paulo")
 
-MODELOS_PREFERENCIA = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro']
+MODELOS_PREFERENCIA = ['gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.5-flash-lite']
 
 
 def validar_configuracao():
@@ -59,8 +59,10 @@ def extrair_forma_pagamento(venda):
     return pagamentos[0].get('payment_method_name', 'Outros')
 
 
-def buscar_vendas_saipos(ontem_str):
-    """ Busca vendas na API da Saipos com timeout e tratamento de erro. """
+def buscar_vendas_saipos(ontem_str, tentativas=3, espera_base=5):
+    """ Busca vendas na API da Saipos com timeout, retry com backoff e tratamento de erro.
+    Erros 5xx (ex: 504 Gateway Timeout) costumam ser transitórios do lado da Saipos,
+    então vale tentar novamente antes de desistir. """
     url = "https://data.saipos.io/v1/search_sales_v3"
     headers = {"Authorization": f"Bearer {SAIPOS_TOKEN}", "Accept": "application/json"}
     params = {
@@ -68,16 +70,29 @@ def buscar_vendas_saipos(ontem_str):
         "p_filter_date_start": f"{ontem_str}T00:00:00",
         "p_filter_date_end": f"{ontem_str}T23:59:59"
     }
-    try:
-        r = requests.get(url, headers=headers, params=params, timeout=30)
-        r.raise_for_status()
-        return r.json()
-    except requests.exceptions.Timeout:
-        print("Erro: timeout ao consultar a API da Saipos.")
-        return []
-    except requests.exceptions.RequestException as e:
-        print(f"Erro ao consultar a API da Saipos: {e}")
-        return []
+
+    for tentativa in range(1, tentativas + 1):
+        try:
+            r = requests.get(url, headers=headers, params=params, timeout=30)
+            r.raise_for_status()
+            return r.json()
+        except requests.exceptions.Timeout:
+            print(f"Timeout ao consultar a Saipos (tentativa {tentativa}/{tentativas}).")
+        except requests.exceptions.HTTPError as e:
+            status = e.response.status_code if e.response is not None else None
+            print(f"Erro HTTP {status} ao consultar a Saipos (tentativa {tentativa}/{tentativas}): {e}")
+            if status is not None and status < 500:
+                # Erro do cliente (ex: 401, 403, 404) não se resolve tentando de novo
+                break
+        except requests.exceptions.RequestException as e:
+            print(f"Erro ao consultar a API da Saipos (tentativa {tentativa}/{tentativas}): {e}")
+
+        if tentativa < tentativas:
+            import time
+            time.sleep(espera_base * tentativa)  # backoff simples: 5s, 10s, ...
+
+    print("Falha ao obter vendas da Saipos após todas as tentativas. Prosseguindo sem novos dados de sync.")
+    return []
 
 
 def enviar_email_html_com_grafico(assunto, corpo_html, caminho_foto):
