@@ -111,13 +111,21 @@ def obter_comparativo_mtd_texto(cursor):
 
 def gerar_grafico_acumulado(cursor, ontem_dt):
     """ Busca faturamento dia a dia e plota a curva acumulada """
+    # 1. Datas Mês Atual
     inicio_atual = ontem_dt.replace(day=1).strftime('%Y-%m-%d')
     fim_atual = ontem_dt.strftime('%Y-%m-%d')
     
+    # 2. Datas Mês Anterior
     mes_anterior_dt = (ontem_dt.replace(day=1) - timedelta(days=1))
     inicio_ant = mes_anterior_dt.replace(day=1).strftime('%Y-%m-%d')
     ultimo_dia_ant = calendar.monthrange(mes_anterior_dt.year, mes_anterior_dt.month)[1]
     fim_ant = mes_anterior_dt.replace(day=ultimo_dia_ant).strftime('%Y-%m-%d')
+
+    # 3. Datas Mês Retrasado (NOVO)
+    mes_retrasado_dt = (mes_anterior_dt.replace(day=1) - timedelta(days=1))
+    inicio_retr = mes_retrasado_dt.replace(day=1).strftime('%Y-%m-%d')
+    ultimo_dia_retr = calendar.monthrange(mes_retrasado_dt.year, mes_retrasado_dt.month)[1]
+    fim_retr = mes_retrasado_dt.replace(day=ultimo_dia_retr).strftime('%Y-%m-%d')
 
     # Query dia a dia mês atual
     cursor.execute("""
@@ -135,23 +143,38 @@ def gerar_grafico_acumulado(cursor, ontem_dt):
     """, (inicio_ant, fim_ant))
     vendas_anterior = {r[0]: float(r[1]) for r in cursor.fetchall()}
 
+    # Query dia a dia mês retrasado completo (NOVO)
+    cursor.execute("""
+        SELECT extract(day from data_venda)::int as dia, SUM(valor_total) as total
+        FROM vendas WHERE data_venda >= %s AND data_venda <= %s
+        GROUP BY dia ORDER BY dia
+    """, (inicio_retr, fim_retr))
+    vendas_retrasado = {r[0]: float(r[1]) for r in cursor.fetchall()}
+
     # Alinha os dados em um DataFrame de 1 a 31 dias
     dias_mes = list(range(1, 32))
     df = pd.DataFrame(index=dias_mes)
     df['Atual'] = df.index.map(vendas_atual).fillna(0.0)
     df['Anterior_Meta'] = df.index.map(vendas_anterior).fillna(0.0) * 1.02  # Mês anterior + 2%
+    df['Retrasado'] = df.index.map(vendas_retrasado).fillna(0.0) # (NOVO)
 
     # Calcula as somas acumuladas
     df['Acumulado_Atual'] = df['Atual'].cumsum()
     df['Acumulado_Meta'] = df['Anterior_Meta'].cumsum()
+    df['Acumulado_Retrasado'] = df['Retrasado'].cumsum() # (NOVO)
 
     # Esconde os dias futuros do mês atual para a linha não "ficar reta"
     df.loc[df.index > ontem_dt.day, 'Acumulado_Atual'] = None
 
     # Plota o Gráfico
     plt.figure(figsize=(10, 5))
-    plt.plot(df.index, df['Acumulado_Meta'], label='Meta (Mês Ant + 2%)', color='#95a5a6', linestyle='--', marker='o')
-    plt.plot(df.index, df['Acumulado_Atual'], label='Mês Atual', color='#27ae60', linewidth=2.5, marker='o')
+    
+    # Linha do Mês Retrasado (NOVO)
+    plt.plot(df.index, df['Acumulado_Retrasado'], label=f'Retrasado ({mes_retrasado_dt.strftime("%b/%y")})', color='#3498db', linestyle='-.', marker='^', markersize=5)
+    
+    # Linhas Originais (com labels atualizadas para mostrar os meses)
+    plt.plot(df.index, df['Acumulado_Meta'], label=f'Meta ({mes_anterior_dt.strftime("%b/%y")} + 2%)', color='#95a5a6', linestyle='--', marker='o')
+    plt.plot(df.index, df['Acumulado_Atual'], label=f'Mês Atual ({ontem_dt.strftime("%b/%y")})', color='#27ae60', linewidth=2.5, marker='o')
     
     plt.title('Evolução do Faturamento Acumulado - Nosso Café', fontsize=14, fontweight='bold', pad=15)
     plt.xlabel('Dia do Mês', fontsize=11)
