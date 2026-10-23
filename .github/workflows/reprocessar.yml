@@ -1,4 +1,4 @@
-name: Reprocessar Abril Manual
+name: Reprocessar outubro Manual
 on: 
   workflow_dispatch: # Isso permite que você aperte um botão para rodar
 
