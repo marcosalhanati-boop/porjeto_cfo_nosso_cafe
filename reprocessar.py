@@ -30,8 +30,8 @@ def rodar():
     cur.execute("DELETE FROM vendas WHERE data_venda >= '2026-04-01' AND data_venda <= '2026-04-30'")
     conn.commit()
 
-    data_inicio = datetime(2026, 4, 1)
-    data_fim = datetime(2026, 4, 21) # Ontem
+    data_inicio = datetime(2026, 10, 1)
+    data_fim = datetime(2026, 10, 22) # Ontem
     
     dia_atual = data_inicio
     total_geral = 0
