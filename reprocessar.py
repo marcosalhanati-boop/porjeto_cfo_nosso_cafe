@@ -31,7 +31,7 @@ def rodar():
     conn.commit()
 
     data_inicio = datetime(2026, 10, 1)
-    data_fim = datetime(2026, 10, 22) # Ontem
+    data_fim = datetime(2026, 10, 27) # Ontem
     
     dia_atual = data_inicio
     total_geral = 0
